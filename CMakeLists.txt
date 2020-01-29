@@ -13,6 +13,7 @@ add_library(parallel-rsp STATIC
 		main.cpp
 		rsp/vfunctions.cpp
 		rsp.cpp rsp.hpp
+		rsp_jit.cpp rsp_jit.hpp
 		debug_jit.cpp debug_jit.hpp
 		rsp/ls.cpp rsp/pipeline.h
 		rsp/reciprocal.cpp rsp/reciprocal.h
@@ -51,8 +52,28 @@ add_library(parallel-rsp STATIC
 target_include_directories(parallel-rsp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(parallel-rsp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/arch/x86_64/rsp)
 target_compile_options(parallel-rsp PRIVATE ${PARALLEL_RSP_CXX_FLAGS})
+
+option(PARALLEL_RSP_BAKED_LIGHTNING "Use built-in Lightning." OFF)
+
+target_compile_definitions(parallel-rsp PUBLIC PARALLEL_RSP_LIGHTNING)
+if (PARALLEL_RSP_BAKED_LIGHTNING)
+	add_library(lightning STATIC
+			lightning/lib/jit_disasm.c
+			lightning/lib/jit_memory.c
+			lightning/lib/jit_names.c
+			lightning/lib/jit_note.c
+			lightning/lib/jit_print.c
+			lightning/lib/jit_size.c
+			lightning/lib/lightning.c)
+	target_include_directories(lightning PUBLIC
+			${CMAKE_CURRENT_SOURCE_DIR}/lightning/include)
+endif()
+target_link_libraries(parallel-rsp PUBLIC lightning)
 target_compile_definitions(parallel-rsp PUBLIC DEBUG_JIT)
-target_link_libraries(parallel-rsp dl)
+
+if (NOT WIN32)
+	target_link_libraries(parallel-rsp PRIVATE dl)
+endif()
 
 add_executable(rsp-runner main.cpp)
 target_link_libraries(rsp-runner PRIVATE parallel-rsp)

@@ -10,11 +10,11 @@
 #include <clang/Lex/PreprocessorOptions.h>
 #include <llvm/ADT/SmallString.h>
 #include <llvm/ExecutionEngine/ExecutionEngine.h>
-#include <llvm/ExecutionEngine/MCJIT.h>
 #include <llvm/ExecutionEngine/JITSymbol.h>
+#include <llvm/ExecutionEngine/MCJIT.h>
 #include <llvm/ExecutionEngine/ObjectCache.h>
-#include <llvm/ExecutionEngine/SectionMemoryManager.h>
 #include <llvm/ExecutionEngine/RuntimeDyld.h>
+#include <llvm/ExecutionEngine/SectionMemoryManager.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
@@ -33,7 +33,6 @@
 #include <llvm/ExecutionEngine/Orc/IRCompileLayer.h>
 #include <llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h>
 
-
 #include <stdio.h>
 using namespace clang;
 using namespace std;
@@ -43,8 +42,9 @@ namespace JIT
 struct Block::Impl
 {
 	Impl(LLVMEngine &engine_)
-		: engine(engine_)
-	{}
+	    : engine(engine_)
+	{
+	}
 
 	LLVMEngine &engine;
 	Func block = nullptr;
@@ -79,7 +79,7 @@ struct LLVMHolder
 struct LLVMEngine::Impl
 {
 	Impl(const std::unordered_map<std::string, uint64_t> &symbol_table_)
-		: symbol_table(symbol_table_)
+	    : symbol_table(symbol_table_)
 	{
 		static LLVMHolder llvm_holder;
 
@@ -92,21 +92,19 @@ struct LLVMEngine::Impl
 		llvm::orc::LegacyRTDyldObjectLinkingLayer::Resources resources;
 		resources.MemMgr = llvm::make_unique<llvm::SectionMemoryManager>();
 		resources.Resolver = llvm::orc::createLegacyLookupResolver(
-				*execution_session,
-				[this](const std::string &name) -> llvm::JITSymbol {
-					return findSymbol(name);
-				},
-				[](llvm::Error) {});
+		    *execution_session, [this](const std::string &name) -> llvm::JITSymbol { return findSymbol(name); },
+		    [](llvm::Error) {});
 
-		object_layer = llvm::make_unique<llvm::orc::LegacyRTDyldObjectLinkingLayer>(*execution_session,
-				[=](llvm::orc::VModuleKey) { return resources; });
+		object_layer = llvm::make_unique<llvm::orc::LegacyRTDyldObjectLinkingLayer>(
+		    *execution_session, [=](llvm::orc::VModuleKey) { return resources; });
 
 		auto host = llvm::orc::JITTargetMachineBuilder::detectHost();
 		target_machine = llvm::cantFail(host->createTargetMachine());
 		target_machine->setOptLevel(llvm::CodeGenOpt::Level::Default);
 		data_layout = llvm::make_unique<llvm::DataLayout>(std::move(*host->getDefaultDataLayoutForTarget()));
-		compile_layer = llvm::make_unique<llvm::orc::LegacyIRCompileLayer<
-			llvm::orc::LegacyRTDyldObjectLinkingLayer, llvm::orc::SimpleCompiler>>(*object_layer, llvm::orc::SimpleCompiler(*target_machine));
+		compile_layer = llvm::make_unique<
+		    llvm::orc::LegacyIRCompileLayer<llvm::orc::LegacyRTDyldObjectLinkingLayer, llvm::orc::SimpleCompiler>>(
+		    *object_layer, llvm::orc::SimpleCompiler(*target_machine));
 	}
 
 	std::unique_ptr<EmitLLVMOnlyAction> compile_c(const std::string &source)
@@ -178,9 +176,9 @@ struct LLVMEngine::Impl
 	llvm::LLVMContext context;
 	std::unique_ptr<llvm::orc::ExecutionSession> execution_session;
 	std::unique_ptr<llvm::orc::LegacyRTDyldObjectLinkingLayer> object_layer;
-	std::unique_ptr<llvm::orc::LegacyIRCompileLayer<
-		llvm::orc::LegacyRTDyldObjectLinkingLayer,
-		llvm::orc::SimpleCompiler>> compile_layer;
+	std::unique_ptr<
+	    llvm::orc::LegacyIRCompileLayer<llvm::orc::LegacyRTDyldObjectLinkingLayer, llvm::orc::SimpleCompiler>>
+	    compile_layer;
 	std::unique_ptr<llvm::TargetMachine> target_machine;
 	std::unique_ptr<llvm::orc::MangleAndInterner> mangler;
 	std::unique_ptr<llvm::DataLayout> data_layout;
@@ -211,4 +209,4 @@ bool Block::Impl::compile(const std::string &source)
 	block = engine.impl->compile(source);
 	return block != nullptr;
 }
-}
+} // namespace JIT

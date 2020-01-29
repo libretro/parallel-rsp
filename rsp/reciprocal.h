@@ -15,4 +15,3 @@
 extern const uint16_t rsp_reciprocal_rom[1024];
 
 #endif
-

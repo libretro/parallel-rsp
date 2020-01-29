@@ -8,21 +8,24 @@
 
 namespace JIT
 {
-   using Func = void (*)(void *, void *);
-   class DebugBlock
-   {
-      public:
-         DebugBlock(const std::unordered_map<std::string, uint64_t> &symbol_table);
-         ~DebugBlock();
+using Func = void (*)(void *, void *);
+class DebugBlock
+{
+public:
+	DebugBlock(const std::unordered_map<std::string, uint64_t> &symbol_table);
+	~DebugBlock();
 
-         bool compile(uint64_t hash, const std::string &source);
-         Func get_func() const { return block; }
+	bool compile(uint64_t hash, const std::string &source);
+	Func get_func() const
+	{
+		return block;
+	}
 
-      private:
-         struct Impl;
-         std::unique_ptr<Impl> impl;
-         Func block = nullptr;
-   };
-}
+private:
+	struct Impl;
+	std::unique_ptr<Impl> impl;
+	Func block = nullptr;
+};
+} // namespace JIT
 
 #endif
