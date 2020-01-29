@@ -21,14 +21,6 @@ using Block = JIT::Block;
 #endif
 using Func = JIT::Func;
 
-enum ReturnMode
-{
-	MODE_ENTER = 0,
-	MODE_CONTINUE = 1,
-	MODE_BREAK = 2,
-	MODE_DMA_READ = 3,
-	MODE_CHECK_FLAGS = 4
-};
 
 class alignas(64) CPU
 {

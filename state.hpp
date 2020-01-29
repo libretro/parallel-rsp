@@ -131,6 +131,16 @@ struct CPUState
 	CP2 cp2 = {};
 	CP0 cp0;
 };
+
+enum ReturnMode
+{
+	MODE_ENTER = 0,
+	MODE_CONTINUE = 1,
+	MODE_BREAK = 2,
+	MODE_DMA_READ = 3,
+	MODE_CHECK_FLAGS = 4
+};
+
 } // namespace RSP
 
 #endif
