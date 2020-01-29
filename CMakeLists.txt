@@ -1,0 +1,61 @@
+cmake_minimum_required(VERSION 3.5)
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_C_STANDARD 99)
+project(parallel-rsp LANGUAGES CXX C)
+
+if (CMAKE_COMPILER_IS_GNUCXX OR (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang"))
+    set(PARALLEL_RSP_CXX_FLAGS -Wall -Wextra -Wno-missing-field-initializers -Wno-empty-body -ffast-math -Wno-unused-parameter)
+elseif (MSVC)
+    set(PARALLEL_RSP_CXX_FLAGS /D_CRT_SECURE_NO_WARNINGS /wd4267 /wd4244 /wd4309 /wd4005 /MP /DNOMINMAX)
+endif()
+
+add_library(parallel-rsp STATIC
+		main.cpp
+		rsp/vfunctions.cpp
+		rsp.cpp rsp.hpp
+		debug_jit.cpp debug_jit.hpp
+		rsp/ls.cpp rsp/pipeline.h
+		rsp/reciprocal.cpp rsp/reciprocal.h
+		rsp_1.1.h
+		rsp/cp0.cpp rsp/cp2.cpp
+		arch/x86_64/rsp/rsp_core.cpp
+		arch/x86_64/rsp/clamp.h
+		arch/x86_64/rsp/rsp.h
+		arch/x86_64/rsp/rsp_impl.h
+		arch/x86_64/rsp/vcr.h
+		arch/x86_64/rsp/vabs.h
+		arch/x86_64/rsp/vadd.h
+		arch/x86_64/rsp/vaddc.h
+		arch/x86_64/rsp/vand.h
+		arch/x86_64/rsp/vch.h
+		arch/x86_64/rsp/vcl.h
+		arch/x86_64/rsp/vcr.h
+		arch/x86_64/rsp/vcmp.h
+		arch/x86_64/rsp/vdivh.h
+		arch/x86_64/rsp/vmac.h
+		arch/x86_64/rsp/vmov.h
+		arch/x86_64/rsp/vmrg.h
+		arch/x86_64/rsp/vmudh.h
+		arch/x86_64/rsp/vmul.h
+		arch/x86_64/rsp/vmull.h
+		arch/x86_64/rsp/vmulh.h
+		arch/x86_64/rsp/vmuln.h
+		arch/x86_64/rsp/vor.h
+		arch/x86_64/rsp/vrcpsq.h
+		arch/x86_64/rsp/vrsq.h
+		arch/x86_64/rsp/vsub.h
+		arch/x86_64/rsp/vsubc.h
+		arch/x86_64/rsp/vxor.h
+		arch/x86_64/rsp/vmulm.h)
+
+target_include_directories(parallel-rsp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(parallel-rsp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/arch/x86_64/rsp)
+target_compile_options(parallel-rsp PRIVATE ${PARALLEL_RSP_CXX_FLAGS})
+target_compile_definitions(parallel-rsp PUBLIC DEBUG_JIT)
+target_link_libraries(parallel-rsp dl)
+
+add_executable(rsp-runner main.cpp)
+target_link_libraries(rsp-runner PRIVATE parallel-rsp)
+target_compile_options(rsp-runner PRIVATE ${PARALLEL_RSP_CXX_FLAGS})
+set_target_properties(rsp-runner PROPERTIES LINK_FLAGS "-rdynamic")
+
