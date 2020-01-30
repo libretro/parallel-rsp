@@ -525,7 +525,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 	// TODO: Meaningful register allocation.
 	// For now, always flush register state to memory after an instruction for simplicity.
 	// Should be red-hot in L1 cache, so probably won't be that bad.
-	// On x86, we unfortunately have an anemic register bank to work with.
+	// On x86 and x64, we unfortunately have an anemic register bank to work with in Lightning.
 
 	uint32_t type = instr >> 26;
 
@@ -565,7 +565,6 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		case 003: // SRA
 		{
 			FIXED_SHIFT_OP(rshi, sra);
-			DISASM("sra %s, %s, %u\n", NAME(rd), NAME(rt), shift);
 			break;
 		}
 
@@ -721,7 +720,6 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 
 	case 001: // REGIMM
 	{
-		//unsigned rs = (instr >> 21) & 31;
 		unsigned rt = (instr >> 16) & 31;
 
 		switch (rt)
@@ -791,6 +789,9 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			DISASM("bgez %s, 0x%03x\n", NAME(rs), target_pc);
 			break;
 		}
+
+		default:
+			break;
 		}
 		break;
 	}
@@ -1167,14 +1168,14 @@ Func CPU::jit_region(uint64_t hash, unsigned pc_word, unsigned instruction_count
 			jit_patch_at(jit_bnei(JIT_REGISTER_TMP0, 0), latent_delay_slot);
 			first_info = inst_info;
 		}
-		else if (i != 0 && inst_info.branch && last_info.branch)
+		else if (inst_info.branch && last_info.branch)
 		{
 			// "Impossible" handling of the delay slot.
 			// Happens if we have two branch instructions in a row.
 			// Weird magic happens here!
 			jit_handle_impossible_delay_slot(_jit, inst_info, last_info, pc_word << 2, (pc_word + instruction_count) << 2);
 		}
-		else if (i != 0 && !inst_info.handles_delay_slot && last_info.branch)
+		else if (!inst_info.handles_delay_slot && last_info.branch)
 		{
 			// Normal handling of the delay slot.
 			jit_handle_delay_slot(_jit, last_info, pc_word << 2, (pc_word + instruction_count) << 2);
