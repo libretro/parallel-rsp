@@ -8,11 +8,14 @@ int load_byte(int i)
 	return data[i];
 }
 
+int count = 3;
+
 int main(void)
 {
-	int a = load_byte(0);
-	int b = load_byte(1);
-	int c = load_byte(2);
-	int d = load_byte(3);
-	rsp_debug_break(a, b, c, d);
+	int res = 0;
+	for (int i = 0; i < count; i++)
+	{
+		res += load_byte(i);
+	}
+	rsp_debug_break(res, res, res, res);
 }

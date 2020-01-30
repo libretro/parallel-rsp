@@ -720,20 +720,60 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 	}
 
 	case 004: // BEQ
-		DISASM("beq %u\n", 0);
+	{
+		unsigned rs = (instr >> 21) & 31;
+		unsigned rt = (instr >> 16) & 31;
+		uint32_t target_pc = (pc + 4 + (instr << 2)) & 0xffc;
+		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
+		jit_load_register(_jit, JIT_REGISTER_TMP0, rt);
+		jit_eqr(JIT_REGISTER_COND_BRANCH_TAKEN, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1);
+		info.branch = true;
+		info.conditional = true;
+		info.branch_target = target_pc;
+		DISASM("beq %s, %s, 0x%03x\n", NAME(rs), NAME(rt), target_pc);
 		break;
+	}
 
 	case 005: // BNE
-		DISASM("bne %u\n", 0);
+	{
+		unsigned rs = (instr >> 21) & 31;
+		unsigned rt = (instr >> 16) & 31;
+		uint32_t target_pc = (pc + 4 + (instr << 2)) & 0xffc;
+		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
+		jit_load_register(_jit, JIT_REGISTER_TMP0, rt);
+		jit_ner(JIT_REGISTER_COND_BRANCH_TAKEN, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1);
+		info.branch = true;
+		info.conditional = true;
+		info.branch_target = target_pc;
+		DISASM("bne %s, %s, 0x%03x\n", NAME(rs), NAME(rt), target_pc);
 		break;
+	}
 
 	case 006: // BLEZ
-		DISASM("blez %u\n", 0);
+	{
+		unsigned rs = (instr >> 21) & 31;
+		uint32_t target_pc = (pc + 4 + (instr << 2)) & 0xffc;
+		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
+		jit_lei(JIT_REGISTER_COND_BRANCH_TAKEN, JIT_REGISTER_TMP0, 0);
+		info.branch = true;
+		info.conditional = true;
+		info.branch_target = target_pc;
+		DISASM("blez %s, 0x%03x\n", NAME(rs), target_pc);
 		break;
+	}
 
 	case 007: // BGTZ
-		DISASM("bgtz %u\n", 0);
+	{
+		unsigned rs = (instr >> 21) & 31;
+		uint32_t target_pc = (pc + 4 + (instr << 2)) & 0xffc;
+		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
+		jit_gti(JIT_REGISTER_COND_BRANCH_TAKEN, JIT_REGISTER_TMP0, 0);
+		info.branch = true;
+		info.conditional = true;
+		info.branch_target = target_pc;
+		DISASM("bgtz %s, 0x%03x\n", NAME(rs), target_pc);
 		break;
+	}
 
 	case 010: // ADDI
 	case 011:
