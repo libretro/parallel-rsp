@@ -240,7 +240,12 @@ void CPU::init_jit_thunks()
 	jit_retval(JIT_REGISTER_NEXT_PC);
 
 	// Jump to thunk.
+
+	// Clear out branch delay slots.
 	jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 0);
+	// JIT_FP[-JIT_FRAME_SIZE] is used for impossible branch delay slots.
+	jit_stxi(-JIT_FRAME_SIZE, JIT_FP, JIT_REGISTER_COND_BRANCH_TAKEN);
+
 	jit_jmpr(JIT_REGISTER_NEXT_PC);
 
 	// When we want to return, JIT thunks will jump here.
@@ -304,7 +309,7 @@ void CPU::jit_end_of_block(jit_state_t *_jit, uint32_t pc, const CPU::Instructio
 			jit_patch_at(jit_beqi(JIT_REGISTER_COND_BRANCH_TAKEN, 0), forward);
 
 		if (last_info.indirect)
-			jit_ldxi_i(JIT_REGISTER_TMP0, JIT_REGISTER_STATE, offsetof(CPUState, sr) + 4 * last_info.branch_target);
+			jit_load_register(_jit, JIT_REGISTER_TMP0, last_info.branch_target);
 		else
 			jit_movi(JIT_REGISTER_TMP0, last_info.branch_target);
 		jit_stxi_i(offsetof(CPUState, branch_target), JIT_REGISTER_STATE, JIT_REGISTER_TMP0);
@@ -317,6 +322,57 @@ void CPU::jit_end_of_block(jit_state_t *_jit, uint32_t pc, const CPU::Instructio
 	jit_patch_abs(jit_jmpi(), thunks.enter_thunk);
 }
 
+void CPU::jit_handle_impossible_delay_slot(jit_state_t *_jit, const InstructionInfo &info,
+                                           const InstructionInfo &last_info, uint32_t base_pc,
+                                           uint32_t end_pc)
+{
+	// A case here would be:
+	// beq r0, r1, somewhere
+	// beq r1, r2, somewhere
+	// <-- we are here ...
+	// add r0, r1, r2
+
+	// This case should normally never happen, but you never know what happens on a fixed platform ...
+	// Cond branch information for the first branch is found in JIT_FP[-JIT_FRAME_SIZE].
+	// Cond branch information for the second branch is found in COND_BRANCH_TAKEN.
+
+	// If the first branch was taken, we will transfer control, but we will never use a local goto here
+	// since we potentially need to set the has_delay_slot argument.
+	// If the first branch is not taken, we will defer any control transfer until the next instruction, nothing happens,
+	// except that FP[0] is cleared.
+
+	jit_node_t *nobranch = nullptr;
+	if (last_info.conditional)
+	{
+		// Load saved conditional register.
+		jit_ldr(JIT_REGISTER_TMP0, JIT_FP);
+		jit_movi(JIT_REGISTER_TMP1, 0);
+		// Clear saved conditional register.
+		jit_stxi(-JIT_FRAME_SIZE, JIT_FP, JIT_REGISTER_TMP1);
+		nobranch = jit_beqi(JIT_REGISTER_TMP0, 0);
+	}
+
+	// Here we *will* take the branch.
+	if (last_info.indirect)
+		jit_load_register(_jit, JIT_REGISTER_NEXT_PC, last_info.branch_target);
+	else
+		jit_movi(JIT_REGISTER_NEXT_PC, last_info.branch_target);
+
+	// ... But do we have a delay slot to take care of?
+	if (!info.conditional)
+		jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 1);
+	jit_stxi_i(offsetof(CPUState, has_delay_slot), JIT_REGISTER_STATE, JIT_REGISTER_COND_BRANCH_TAKEN);
+
+	if (info.indirect)
+		jit_load_register(_jit, JIT_REGISTER_TMP0, last_info.branch_target);
+	else
+		jit_movi(JIT_REGISTER_TMP0, last_info.branch_target);
+	jit_stxi_i(offsetof(CPUState, branch_target), JIT_REGISTER_STATE, JIT_REGISTER_TMP0);
+
+	jit_patch_abs(jit_jmpi(), thunks.enter_thunk);
+	jit_patch(nobranch);
+}
+
 void CPU::jit_handle_delay_slot(jit_state_t *_jit, const InstructionInfo &last_info,
                                 uint32_t base_pc, uint32_t end_pc)
 {
@@ -327,6 +383,7 @@ void CPU::jit_handle_delay_slot(jit_state_t *_jit, const InstructionInfo &last_i
 			jit_movr(JIT_REGISTER_TMP0, JIT_REGISTER_COND_BRANCH_TAKEN);
 			jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 0);
 
+			// Patch this up later.
 			unsigned local_index = (last_info.branch_target - base_pc) >> 2;
 			local_branches.push_back({ jit_bnei(JIT_REGISTER_TMP0, 0), local_index });
 		}
@@ -336,7 +393,7 @@ void CPU::jit_handle_delay_slot(jit_state_t *_jit, const InstructionInfo &last_i
 			jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 0);
 			auto *no_branch = jit_beqi(JIT_REGISTER_TMP0, 0);
 			if (last_info.indirect)
-				jit_ldxi_i(JIT_REGISTER_NEXT_PC, JIT_REGISTER_STATE, offsetof(CPUState, sr) + 4 * last_info.branch_target);
+				jit_load_register(_jit, JIT_REGISTER_NEXT_PC, last_info.branch_target);
 			else
 				jit_movi(JIT_REGISTER_NEXT_PC, last_info.branch_target);
 			jit_patch_abs(jit_jmpi(), thunks.enter_thunk);
@@ -348,13 +405,14 @@ void CPU::jit_handle_delay_slot(jit_state_t *_jit, const InstructionInfo &last_i
 		jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 0);
 		if (!last_info.indirect && last_info.branch_target >= base_pc && last_info.branch_target < end_pc)
 		{
+			// Patch this up later.
 			unsigned local_index = (last_info.branch_target - base_pc) >> 2;
 			local_branches.push_back({ jit_jmpi(), local_index });
 		}
 		else
 		{
 			if (last_info.indirect)
-				jit_ldxi_i(JIT_REGISTER_NEXT_PC, JIT_REGISTER_STATE,offsetof(CPUState, sr) + 4 * last_info.branch_target);
+				jit_load_register(_jit, JIT_REGISTER_NEXT_PC, last_info.branch_target);
 			else
 				jit_movi(JIT_REGISTER_NEXT_PC, last_info.branch_target);
 			jit_patch_abs(jit_jmpi(), thunks.enter_thunk);
@@ -369,20 +427,18 @@ void CPU::jit_exit(jit_state_t *_jit, uint32_t pc, const InstructionInfo &last_i
 		// Need to consider that we need to move delay slot to PC.
 		jit_ldxi_i(JIT_REGISTER_TMP0, JIT_REGISTER_STATE, offsetof(CPUState, has_delay_slot));
 
-		auto *latent_delay_slot = jit_forward();
-		jit_patch_at(jit_bnei(JIT_REGISTER_TMP0, 0), latent_delay_slot);
+		auto *latent_delay_slot = jit_bnei(JIT_REGISTER_TMP0, 0);
 
 		// Common case.
 		// Immediately exit.
 		jit_movi(JIT_REGISTER_MODE, mode);
-		jit_movi(JIT_REGISTER_NEXT_PC, pc + 4);
-		auto *jmp = jit_jmpi();
-		jit_patch_abs(jmp, thunks.return_thunk);
+		jit_movi(JIT_REGISTER_NEXT_PC, (pc + 4) & 0xffcu);
+		jit_patch_abs(jit_jmpi(), thunks.return_thunk);
 
 		// If we had a latent delay slot, we handle it here.
-		jit_link(latent_delay_slot);
-		// We cannot execute a branch inside a delay slot, so just assume we do not have to chain together these.
-		// We could technically handle it, but it gets messy (and it's illegal MIPS), so don't bother.
+		jit_patch(latent_delay_slot);
+
+		// jit_exit is never called from a branch instruction, so we do not have to handle double branch delay slots here.
 		jit_movi(JIT_REGISTER_NEXT_PC, 0);
 		jit_stxi_i(offsetof(CPUState, has_delay_slot), JIT_REGISTER_STATE, JIT_REGISTER_NEXT_PC);
 		jit_movi(JIT_REGISTER_MODE, mode);
@@ -392,7 +448,7 @@ void CPU::jit_exit(jit_state_t *_jit, uint32_t pc, const InstructionInfo &last_i
 	{
 		// Immediately exit.
 		jit_movi(JIT_REGISTER_MODE, mode);
-		jit_movi(JIT_REGISTER_NEXT_PC, pc + 4);
+		jit_movi(JIT_REGISTER_NEXT_PC, (pc + 4) & 0xffcu);
 	}
 	else if (!last_info.indirect && !last_info.conditional)
 	{
@@ -403,17 +459,17 @@ void CPU::jit_exit(jit_state_t *_jit, uint32_t pc, const InstructionInfo &last_i
 	else if (!last_info.conditional)
 	{
 		// We have an indirect branch, load that register into PC.
-		jit_ldxi_i(JIT_REGISTER_NEXT_PC, JIT_REGISTER_STATE, offsetof(CPUState, sr) + 4 * last_info.branch_target);
+		jit_load_register(_jit, JIT_REGISTER_NEXT_PC, last_info.branch_target);
 		jit_movi(JIT_REGISTER_MODE, mode);
 	}
 	else if (last_info.indirect)
 	{
 		// Indirect conditional branch.
 		auto *node = jit_beqi(JIT_REGISTER_COND_BRANCH_TAKEN, 0);
-		jit_ldxi_i(JIT_REGISTER_NEXT_PC, JIT_REGISTER_STATE, offsetof(CPUState, sr) + 4 * last_info.branch_target);
+		jit_load_register(_jit, JIT_REGISTER_NEXT_PC, last_info.branch_target);
 		auto *to_end = jit_jmpi();
 		jit_patch(node);
-		jit_movi(JIT_REGISTER_NEXT_PC, pc + 4);
+		jit_movi(JIT_REGISTER_NEXT_PC, (pc + 4) & 0xffcu);
 		jit_patch(to_end);
 	}
 	else
@@ -423,12 +479,11 @@ void CPU::jit_exit(jit_state_t *_jit, uint32_t pc, const InstructionInfo &last_i
 		jit_movi(JIT_REGISTER_NEXT_PC, last_info.branch_target);
 		auto *to_end = jit_jmpi();
 		jit_patch(node);
-		jit_movi(JIT_REGISTER_NEXT_PC, pc + 4);
+		jit_movi(JIT_REGISTER_NEXT_PC, (pc + 4) & 0xffcu);
 		jit_patch(to_end);
 	}
 
-	auto *jmp = jit_jmpi();
-	jit_patch_abs(jmp, thunks.return_thunk);
+	jit_patch_abs(jit_jmpi(), thunks.return_thunk);
 }
 
 void CPU::jit_load_register(jit_state_t *_jit, unsigned jit_register, unsigned mips_register)
@@ -541,8 +596,16 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			break;
 		}
 
+		// If the last instruction is also a branch instruction, we will need to do some funky handling
+		// so make sure we save the old branch taken register.
+#define FLUSH_IMPOSSIBLE_DELAY_SLOT() do { \
+	if (last_info.branch && last_info.conditional) \
+		jit_stxi(-JIT_FRAME_SIZE, JIT_FP, JIT_REGISTER_COND_BRANCH_TAKEN); \
+	} while(0)
+
 		case 010: // JR
 		{
+			FLUSH_IMPOSSIBLE_DELAY_SLOT();
 			info.branch = true;
 			info.indirect = true;
 			info.branch_target = rs;
@@ -559,6 +622,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 
 		case 011: // JALR
 		{
+			FLUSH_IMPOSSIBLE_DELAY_SLOT();
 			if (rd != 0)
 			{
 				jit_movi(JIT_REGISTER_TMP0, (pc + 8) & 0xffcu);
@@ -664,6 +728,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		{
 		case 020: // BLTZAL
 		{
+			FLUSH_IMPOSSIBLE_DELAY_SLOT();
 			unsigned rs = (instr >> 21) & 31;
 			uint32_t target_pc = (pc + 4 + (instr << 2)) & 0xffc;
 			jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
@@ -682,6 +747,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 
 		case 000: // BLTZ
 		{
+			FLUSH_IMPOSSIBLE_DELAY_SLOT();
 			unsigned rs = (instr >> 21) & 31;
 			uint32_t target_pc = (pc + 4 + (instr << 2)) & 0xffc;
 			jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
@@ -695,6 +761,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 
 		case 021: // BGEZAL
 		{
+			FLUSH_IMPOSSIBLE_DELAY_SLOT();
 			unsigned rs = (instr >> 21) & 31;
 			uint32_t target_pc = (pc + 4 + (instr << 2)) & 0xffc;
 			jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
@@ -713,6 +780,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 
 		case 001: // BGEZ
 		{
+			FLUSH_IMPOSSIBLE_DELAY_SLOT();
 			unsigned rs = (instr >> 21) & 31;
 			uint32_t target_pc = (pc + 4 + (instr << 2)) & 0xffc;
 			jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
@@ -729,6 +797,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 
 	case 003: // JAL
 	{
+		FLUSH_IMPOSSIBLE_DELAY_SLOT();
 		uint32_t target_pc = (instr & 0x3ffu) << 2;
 		jit_movi(JIT_REGISTER_TMP0, (pc + 8) & 0xffcu);
 		jit_store_register(_jit, JIT_REGISTER_TMP0, 31);
@@ -745,6 +814,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 
 	case 002: // J
 	{
+		FLUSH_IMPOSSIBLE_DELAY_SLOT();
 		uint32_t target_pc = (instr & 0x3ffu) << 2;
 		info.branch = true;
 		info.branch_target = target_pc;
@@ -759,6 +829,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 
 	case 004: // BEQ
 	{
+		FLUSH_IMPOSSIBLE_DELAY_SLOT();
 		unsigned rs = (instr >> 21) & 31;
 		unsigned rt = (instr >> 16) & 31;
 		uint32_t target_pc = (pc + 4 + (instr << 2)) & 0xffc;
@@ -774,6 +845,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 
 	case 005: // BNE
 	{
+		FLUSH_IMPOSSIBLE_DELAY_SLOT();
 		unsigned rs = (instr >> 21) & 31;
 		unsigned rt = (instr >> 16) & 31;
 		uint32_t target_pc = (pc + 4 + (instr << 2)) & 0xffc;
@@ -789,6 +861,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 
 	case 006: // BLEZ
 	{
+		FLUSH_IMPOSSIBLE_DELAY_SLOT();
 		unsigned rs = (instr >> 21) & 31;
 		uint32_t target_pc = (pc + 4 + (instr << 2)) & 0xffc;
 		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
@@ -802,6 +875,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 
 	case 007: // BGTZ
 	{
+		FLUSH_IMPOSSIBLE_DELAY_SLOT();
 		unsigned rs = (instr >> 21) & 31;
 		uint32_t target_pc = (pc + 4 + (instr << 2)) & 0xffc;
 		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
@@ -1026,6 +1100,33 @@ void CPU::jit_mark_block_entries(uint32_t pc, uint32_t end, bool *block_entries)
 	}
 }
 
+void CPU::jit_handle_latent_delay_slot(jit_state_t *_jit, const InstructionInfo &last_info)
+{
+	if (last_info.branch)
+	{
+		// Well then ... two branches in a row just happened. Try to do something sensible.
+		if (last_info.conditional)
+			jit_stxi_i(offsetof(CPUState, has_delay_slot), JIT_REGISTER_STATE, JIT_REGISTER_COND_BRANCH_TAKEN);
+
+		jit_ldxi_i(JIT_REGISTER_NEXT_PC, JIT_REGISTER_STATE, offsetof(CPUState, branch_target));
+
+		if (last_info.indirect)
+			jit_load_register(_jit, JIT_REGISTER_TMP1, last_info.branch_target);
+		else
+			jit_movi(JIT_REGISTER_TMP1, last_info.branch_target);
+
+		jit_stxi_i(offsetof(CPUState, branch_target), JIT_REGISTER_STATE, JIT_REGISTER_TMP1);
+		jit_patch_abs(jit_jmpi(), thunks.enter_thunk);
+	}
+	else
+	{
+		jit_movi(JIT_REGISTER_NEXT_PC, 0);
+		jit_stxi_i(offsetof(CPUState, has_delay_slot), JIT_REGISTER_STATE, JIT_REGISTER_NEXT_PC);
+		jit_ldxi_i(JIT_REGISTER_NEXT_PC, JIT_REGISTER_STATE, offsetof(CPUState, branch_target));
+		jit_patch_abs(jit_jmpi(), thunks.enter_thunk);
+	}
+}
+
 Func CPU::jit_region(uint64_t hash, unsigned pc_word, unsigned instruction_count)
 {
 	mips_disasm.clear();
@@ -1044,6 +1145,7 @@ Func CPU::jit_region(uint64_t hash, unsigned pc_word, unsigned instruction_count
 	jit_mark_block_entries(pc_word, pc_word + instruction_count, block_entry);
 
 	InstructionInfo last_info = {};
+	InstructionInfo first_info = {};
 	for (unsigned i = 0; i < instruction_count; i++)
 	{
 		if (block_entry[i])
@@ -1054,12 +1156,23 @@ Func CPU::jit_region(uint64_t hash, unsigned pc_word, unsigned instruction_count
 		jit_instruction(_jit, (pc_word + i) << 2, instr, inst_info, last_info, i == 0,
 		                i + 1 < instruction_count && branch_targets[i + 1]);
 
+		// Handle all the fun cases with branch delay slots.
+		// Not sure if we really need to handle them, but IIRC CXD4 does it and the LLVM RSP as well.
+
 		if (i == 0 && !inst_info.handles_delay_slot)
 		{
 			// After the first instruction, we might need to resolve a latent delay slot.
 			latent_delay_slot = jit_forward();
 			jit_ldxi_i(JIT_REGISTER_TMP0, JIT_REGISTER_STATE, offsetof(CPUState, has_delay_slot));
 			jit_patch_at(jit_bnei(JIT_REGISTER_TMP0, 0), latent_delay_slot);
+			first_info = inst_info;
+		}
+		else if (i != 0 && inst_info.branch && last_info.branch)
+		{
+			// "Impossible" handling of the delay slot.
+			// Happens if we have two branch instructions in a row.
+			// Weird magic happens here!
+			jit_handle_impossible_delay_slot(_jit, inst_info, last_info, pc_word << 2, (pc_word + instruction_count) << 2);
 		}
 		else if (i != 0 && !inst_info.handles_delay_slot && last_info.branch)
 		{
@@ -1076,12 +1189,7 @@ Func CPU::jit_region(uint64_t hash, unsigned pc_word, unsigned instruction_count
 	if (latent_delay_slot)
 	{
 		jit_link(latent_delay_slot);
-		// We cannot execute a branch inside a delay slot, so just assume we do not have to chain together these.
-		// We could technically handle it, but it gets messy (and it's illegal MIPS), so don't bother.
-		jit_movi(JIT_REGISTER_NEXT_PC, 0);
-		jit_stxi_i(offsetof(CPUState, has_delay_slot), JIT_REGISTER_STATE, JIT_REGISTER_NEXT_PC);
-		jit_ldxi_i(JIT_REGISTER_NEXT_PC, JIT_REGISTER_STATE, offsetof(CPUState, branch_target));
-		jit_patch_abs(jit_jmpi(), thunks.enter_thunk);
+		jit_handle_latent_delay_slot(_jit, first_info);
 	}
 
 	for (auto &b : local_branches)

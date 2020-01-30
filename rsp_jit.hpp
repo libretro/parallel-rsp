@@ -106,6 +106,9 @@ private:
 	static void jit_load_register(jit_state_t *_jit, unsigned jit_register, unsigned mips_register);
 	static void jit_store_register(jit_state_t *_jit, unsigned jit_register, unsigned mips_register);
 	void jit_handle_delay_slot(jit_state_t *_jit, const InstructionInfo &last_info, uint32_t base_pc, uint32_t end_pc);
+	void jit_handle_impossible_delay_slot(jit_state_t *_jit, const InstructionInfo &info, const InstructionInfo &last_info,
+	                                      uint32_t base_pc, uint32_t end_pc);
+	void jit_handle_latent_delay_slot(jit_state_t *_jit, const InstructionInfo &last_info);
 	void jit_mark_block_entries(uint32_t pc, uint32_t end, bool *block_entries);
 	std::string mips_disasm;
 	struct Link
