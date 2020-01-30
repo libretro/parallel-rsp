@@ -73,7 +73,7 @@ private:
 
 	std::unordered_map<uint64_t, Func> cached_blocks[IMEM_WORDS];
 
-	Func jit_region(uint64_t hash, unsigned pc, unsigned count);
+	Func jit_region(uint64_t hash, unsigned pc_word, unsigned instruction_count);
 
 	int enter(uint32_t pc);
 
@@ -90,6 +90,23 @@ private:
 	} thunks;
 
 	unsigned analyze_static_end(unsigned pc, unsigned end);
+
+	struct InstructionInfo
+	{
+		uint32_t branch_target;
+		bool indirect;
+		bool branch;
+		bool conditional;
+		bool handles_delay_slot;
+	};
+	void jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr, InstructionInfo &info, const InstructionInfo &last_info,
+	                     bool first_instruction);
+	void jit_exit(jit_state_t *_jit, uint32_t pc, const InstructionInfo &last_info, ReturnMode mode, bool first_instruction);
+	void jit_end_of_block(jit_state_t *_jit, uint32_t pc, const InstructionInfo &last_info);
+	static void jit_load_register(jit_state_t *_jit, unsigned jit_register, unsigned mips_register);
+	static void jit_store_register(jit_state_t *_jit, unsigned jit_register, unsigned mips_register);
+	void jit_handle_delay_slot(jit_state_t *_jit, const InstructionInfo &last_info, jit_node_t **local_targets, uint32_t base_pc, uint32_t end_pc);
+	std::string mips_disasm;
 };
 } // namespace JIT
 } // namespace RSP

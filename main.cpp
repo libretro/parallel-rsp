@@ -30,6 +30,7 @@ static vector<uint32_t> read_binary(const char *path, bool flip)
 	return v;
 }
 
+#if 0
 static bool read_tag_validate(FILE *file, const char *tag)
 {
 	char tmp[9] = {};
@@ -289,10 +290,11 @@ static void validate_trace(RSP::CPU &cpu, const char *path)
 
 	fclose(file);
 }
+#endif
 
 int main(int argc, char *argv[])
 {
-	RSP::CPU cpu;
+	RSP::JIT::CPU cpu;
 	auto &state = cpu.get_state();
 
 	uint32_t cr[16] = {};
@@ -318,8 +320,10 @@ int main(int argc, char *argv[])
 			cpu.run();
 		}
 	}
+#if 0
 	else if (argc == 2)
 		validate_trace(cpu, argv[1]);
+#endif
 	else
 		return 1;
 }
