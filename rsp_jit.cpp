@@ -459,7 +459,7 @@ void CPU::jit_store_register(jit_state_t *_jit, unsigned jit_register, unsigned 
 
 void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
                           InstructionInfo &info, const InstructionInfo &last_info,
-                          bool first_instruction)
+                          bool first_instruction, bool next_instruction_is_branch_target)
 {
 	// VU
 	if ((instr >> 25) == 0x25)
@@ -488,69 +488,56 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 
 		switch (instr & 63)
 		{
+#define FIXED_SHIFT_OP(op, asmop) \
+	NOP_IF_RD_ZERO(); \
+	jit_load_register(_jit, JIT_REGISTER_TMP0, rt); \
+	jit_##op(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, shift); \
+	jit_store_register(_jit, JIT_REGISTER_TMP0, rd); \
+	DISASM(#asmop " %s, %s, %u\n", NAME(rd), NAME(rt), shift)
+
 		case 000: // SLL
 		{
-			NOP_IF_RD_ZERO();
-			jit_load_register(_jit, JIT_REGISTER_TMP0, rt);
-			jit_lshi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, shift);
-			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
-			DISASM("sll %s, %s, %u\n", NAME(rd), NAME(rt), shift);
+			FIXED_SHIFT_OP(lshi, sll);
 			break;
 		}
 
 		case 002: // SRL
 		{
-			NOP_IF_RD_ZERO();
-			jit_load_register(_jit, JIT_REGISTER_TMP0, rt);
-			jit_rshi_u(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, shift);
-			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
-			DISASM("srl %s, %s, %u\n", NAME(rd), NAME(rt), shift);
+			FIXED_SHIFT_OP(rshi_u, srl);
 			break;
 		}
 
 		case 003: // SRA
 		{
-			NOP_IF_RD_ZERO();
-			jit_load_register(_jit, JIT_REGISTER_TMP0, rt);
-			jit_rshi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, shift);
-			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
+			FIXED_SHIFT_OP(rshi, sra);
 			DISASM("sra %s, %s, %u\n", NAME(rd), NAME(rt), shift);
 			break;
 		}
 
+#define VARIABLE_SHIFT_OP(op, asmop) \
+	NOP_IF_RD_ZERO(); \
+	jit_load_register(_jit, JIT_REGISTER_TMP0, rt); \
+	jit_load_register(_jit, JIT_REGISTER_TMP1, rs); \
+	jit_andi(JIT_REGISTER_TMP1, JIT_REGISTER_TMP1, 31); \
+	jit_##op(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1); \
+	jit_store_register(_jit, JIT_REGISTER_TMP0, rd); \
+	DISASM(#asmop " %s, %s, %s\n", NAME(rd), NAME(rt), NAME(rs))
+
 		case 004: // SLLV
 		{
-			NOP_IF_RD_ZERO();
-			jit_load_register(_jit, JIT_REGISTER_TMP0, rt);
-			jit_load_register(_jit, JIT_REGISTER_TMP1, rs);
-			jit_andi(JIT_REGISTER_TMP1, JIT_REGISTER_TMP1, 31);
-			jit_lshr(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1);
-			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
-			DISASM("sllv %s, %s, %s\n", NAME(rd), NAME(rt), NAME(rs));
+			VARIABLE_SHIFT_OP(lshr, sllv);
 			break;
 		}
 
 		case 006: // SRLV
 		{
-			NOP_IF_RD_ZERO();
-			jit_load_register(_jit, JIT_REGISTER_TMP0, rt);
-			jit_load_register(_jit, JIT_REGISTER_TMP1, rs);
-			jit_andi(JIT_REGISTER_TMP1, JIT_REGISTER_TMP1, 31);
-			jit_rshr_u(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1);
-			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
-			DISASM("srlv %s, %s, %s\n", NAME(rd), NAME(rt), NAME(rs));
+			VARIABLE_SHIFT_OP(rshr_u, srlv);
 			break;
 		}
 
 		case 007: // SRAV
 		{
-			NOP_IF_RD_ZERO();
-			jit_load_register(_jit, JIT_REGISTER_TMP0, rt);
-			jit_load_register(_jit, JIT_REGISTER_TMP1, rs);
-			jit_andi(JIT_REGISTER_TMP1, JIT_REGISTER_TMP1, 31);
-			jit_rshr(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1);
-			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
-			DISASM("srav %s, %s, %s\n", NAME(rd), NAME(rt), NAME(rs));
+			VARIABLE_SHIFT_OP(rshr, srav);
 			break;
 		}
 
@@ -559,8 +546,13 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			info.branch = true;
 			info.indirect = true;
 			info.branch_target = rs;
-			info.conditional = true;
-			jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 1);
+
+			// If someone can branch to the delay slot, we have to turn this into a conditional branch.
+			if (next_instruction_is_branch_target)
+			{
+				info.conditional = true;
+				jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 1);
+			}
 			DISASM("jr %s\n", NAME(rs));
 			break;
 		}
@@ -569,14 +561,18 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		{
 			if (rd != 0)
 			{
-				jit_movi(JIT_REGISTER_TMP0, pc + 8);
+				jit_movi(JIT_REGISTER_TMP0, (pc + 8) & 0xffcu);
 				jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
 			}
 			info.branch = true;
 			info.indirect = true;
 			info.branch_target = rs;
-			info.conditional = true;
-			jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 1);
+			// If someone can branch to the delay slot, we have to turn this into a conditional branch.
+			if (next_instruction_is_branch_target)
+			{
+				info.conditional = true;
+				jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 1);
+			}
 			DISASM("jalr %s\n", NAME(rs));
 			break;
 		}
@@ -589,60 +585,43 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			break;
 		}
 
+#define THREE_REG_OP(op, asmop) \
+	NOP_IF_RD_ZERO(); \
+	jit_load_register(_jit, JIT_REGISTER_TMP0, rt); \
+	jit_load_register(_jit, JIT_REGISTER_TMP1, rs); \
+	jit_##op(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1); \
+	jit_store_register(_jit, JIT_REGISTER_TMP0, rd); \
+	DISASM(#asmop " %s, %s, %s\n", NAME(rd), NAME(rt), NAME(rs))
+
 		case 040: // ADD
 		case 041: // ADDU
 		{
-			NOP_IF_RD_ZERO();
-			jit_load_register(_jit, JIT_REGISTER_TMP0, rt);
-			jit_load_register(_jit, JIT_REGISTER_TMP1, rs);
-			jit_addr(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1);
-			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
-			DISASM("addu %s, %s, %s\n", NAME(rd), NAME(rt), NAME(rs));
+			THREE_REG_OP(addr, addu);
 			break;
 		}
 
 		case 042: // SUB
 		case 043: // SUBU
 		{
-			NOP_IF_RD_ZERO();
-			jit_load_register(_jit, JIT_REGISTER_TMP0, rt);
-			jit_load_register(_jit, JIT_REGISTER_TMP1, rs);
-			jit_subr(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1);
-			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
-			DISASM("subu %s, %s, %s\n", NAME(rd), NAME(rt), NAME(rs));
+			THREE_REG_OP(subr, subu);
 			break;
 		}
 
 		case 044: // AND
 		{
-			NOP_IF_RD_ZERO();
-			jit_load_register(_jit, JIT_REGISTER_TMP0, rt);
-			jit_load_register(_jit, JIT_REGISTER_TMP1, rs);
-			jit_andr(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1);
-			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
-			DISASM("and %s, %s, %s\n", NAME(rd), NAME(rt), NAME(rs));
+			THREE_REG_OP(andr, and);
 			break;
 		}
 
 		case 045: // OR
 		{
-			NOP_IF_RD_ZERO();
-			jit_load_register(_jit, JIT_REGISTER_TMP0, rt);
-			jit_load_register(_jit, JIT_REGISTER_TMP1, rs);
-			jit_orr(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1);
-			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
-			DISASM("or %s, %s, %s\n", NAME(rd), NAME(rt), NAME(rs));
+			THREE_REG_OP(orr, or);
 			break;
 		}
 
 		case 046: // XOR
 		{
-			NOP_IF_RD_ZERO();
-			jit_load_register(_jit, JIT_REGISTER_TMP0, rt);
-			jit_load_register(_jit, JIT_REGISTER_TMP1, rs);
-			jit_xorr(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1);
-			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
-			DISASM("xor %s, %s, %s\n", NAME(rd), NAME(rt), NAME(rs));
+			THREE_REG_OP(xorr, xor);
 			break;
 		}
 
@@ -660,23 +639,13 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 
 		case 052: // SLT
 		{
-			NOP_IF_RD_ZERO();
-			jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
-			jit_load_register(_jit, JIT_REGISTER_TMP1, rt);
-			jit_ltr(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1);
-			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
-			DISASM("slt %s, %s, %s\n", NAME(rd), NAME(rt), NAME(rs));
+			THREE_REG_OP(ltr, slt);
 			break;
 		}
 
 		case 053: // SLTU
 		{
-			NOP_IF_RD_ZERO();
-			jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
-			jit_load_register(_jit, JIT_REGISTER_TMP1, rt);
-			jit_ltr_u(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1);
-			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
-			DISASM("sltu %s, %s, %s\n", NAME(rd), NAME(rt), NAME(rs));
+			THREE_REG_OP(ltr_u, sltu);
 			break;
 		}
 
@@ -694,20 +663,66 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		switch (rt)
 		{
 		case 020: // BLTZAL
-			DISASM("bltzal %u\n", 0);
+		{
+			unsigned rs = (instr >> 21) & 31;
+			uint32_t target_pc = (pc + 4 + (instr << 2)) & 0xffc;
+			jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
+			jit_lti(JIT_REGISTER_COND_BRANCH_TAKEN, JIT_REGISTER_TMP0, 0);
+
+			// Link register is written after condition.
+			jit_movi(JIT_REGISTER_TMP0, (pc + 8) & 0xffcu);
+			jit_store_register(_jit, JIT_REGISTER_TMP0, 31);
+
+			info.branch = true;
+			info.conditional = true;
+			info.branch_target = target_pc;
+			DISASM("bltzal %s, 0x%03x\n", NAME(rs), target_pc);
 			break;
+		}
 
 		case 000: // BLTZ
-			DISASM("bltz %u\n", 0);
+		{
+			unsigned rs = (instr >> 21) & 31;
+			uint32_t target_pc = (pc + 4 + (instr << 2)) & 0xffc;
+			jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
+			jit_lti(JIT_REGISTER_COND_BRANCH_TAKEN, JIT_REGISTER_TMP0, 0);
+			info.branch = true;
+			info.conditional = true;
+			info.branch_target = target_pc;
+			DISASM("bltz %s, 0x%03x\n", NAME(rs), target_pc);
 			break;
+		}
 
 		case 021: // BGEZAL
-			DISASM("bgezal %u\n", 0);
+		{
+			unsigned rs = (instr >> 21) & 31;
+			uint32_t target_pc = (pc + 4 + (instr << 2)) & 0xffc;
+			jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
+			jit_gei(JIT_REGISTER_COND_BRANCH_TAKEN, JIT_REGISTER_TMP0, 0);
+
+			// Link register is written after condition.
+			jit_movi(JIT_REGISTER_TMP0, (pc + 8) & 0xffcu);
+			jit_store_register(_jit, JIT_REGISTER_TMP0, 31);
+
+			info.branch = true;
+			info.conditional = true;
+			info.branch_target = target_pc;
+			DISASM("bltzal %s, 0x%03x\n", NAME(rs), target_pc);
 			break;
+		}
 
 		case 001: // BGEZ
-			DISASM("bgez %u\n", 0);
+		{
+			unsigned rs = (instr >> 21) & 31;
+			uint32_t target_pc = (pc + 4 + (instr << 2)) & 0xffc;
+			jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
+			jit_gei(JIT_REGISTER_COND_BRANCH_TAKEN, JIT_REGISTER_TMP0, 0);
+			info.branch = true;
+			info.conditional = true;
+			info.branch_target = target_pc;
+			DISASM("bgez %s, 0x%03x\n", NAME(rs), target_pc);
 			break;
+		}
 		}
 		break;
 	}
@@ -715,12 +730,15 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 	case 003: // JAL
 	{
 		uint32_t target_pc = (instr & 0x3ffu) << 2;
-		jit_movi(JIT_REGISTER_TMP0, pc + 8);
+		jit_movi(JIT_REGISTER_TMP0, (pc + 8) & 0xffcu);
 		jit_store_register(_jit, JIT_REGISTER_TMP0, 31);
 		info.branch = true;
 		info.branch_target = target_pc;
-		info.conditional = true;
-		jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 1);
+		if (next_instruction_is_branch_target)
+		{
+			info.conditional = true;
+			jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 1);
+		}
 		DISASM("jal 0x%03x\n", target_pc);
 		break;
 	}
@@ -730,8 +748,11 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		uint32_t target_pc = (instr & 0x3ffu) << 2;
 		info.branch = true;
 		info.branch_target = target_pc;
-		info.conditional = true;
-		jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 1);
+		if (next_instruction_is_branch_target)
+		{
+			info.conditional = true;
+			jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 1);
+		}
 		DISASM("j 0x%03x\n", target_pc);
 		break;
 	}
@@ -792,86 +813,49 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		break;
 	}
 
+#define TWO_REG_IMM_OP(op, asmop, immtype) \
+	unsigned rt = (instr >> 16) & 31; \
+	NOP_IF_RT_ZERO(); \
+	unsigned rs = (instr >> 21) & 31; \
+	jit_load_register(_jit, JIT_REGISTER_TMP0, rs); \
+	jit_##op(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, immtype(instr)); \
+	jit_store_register(_jit, JIT_REGISTER_TMP0, rt); \
+	DISASM(#asmop " %s, %s, %d\n", NAME(rt), NAME(rs), immtype(instr))
+
 	case 010: // ADDI
 	case 011:
 	{
-		unsigned rt = (instr >> 16) & 31;
-		NOP_IF_RT_ZERO();
-		int16_t simm = int16_t(instr);
-		unsigned rs = (instr >> 21) & 31;
-
-		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
-		jit_addi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, simm);
-		jit_store_register(_jit, JIT_REGISTER_TMP0, rt);
-		DISASM("addi %s, %s, %d\n", NAME(rt), NAME(rs), simm);
+		TWO_REG_IMM_OP(addi, addi, int16_t);
 		break;
 	}
 
 	case 012: // SLTI
 	{
-		unsigned rt = (instr >> 16) & 31;
-		NOP_IF_RT_ZERO();
-		int16_t simm = int16_t(instr);
-		unsigned rs = (instr >> 21) & 31;
-
-		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
-		jit_lti(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, simm);
-		jit_store_register(_jit, JIT_REGISTER_TMP0, rt);
-		DISASM("slti %s, %s, %d\n", NAME(rt), NAME(rs), simm);
+		TWO_REG_IMM_OP(lti, slti, int16_t);
 		break;
 	}
 
 	case 013: // SLTIU
 	{
-		unsigned rt = (instr >> 16) & 31;
-		NOP_IF_RT_ZERO();
-		uint16_t imm = uint16_t(instr);
-		unsigned rs = (instr >> 21) & 31;
-
-		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
-		jit_lti_u(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, imm);
-		jit_store_register(_jit, JIT_REGISTER_TMP0, rt);
-		DISASM("sltiu %s, %s, %u\n", NAME(rt), NAME(rs), imm);
+		TWO_REG_IMM_OP(lti_u, sltiu, int16_t);
 		break;
 	}
 
 	case 014: // ANDI
 	{
-		unsigned rt = (instr >> 16) & 31;
-		NOP_IF_RT_ZERO();
-		unsigned rs = (instr >> 21) & 31;
-		uint16_t imm = uint16_t(instr);
-		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
-		jit_andi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, imm);
-		jit_store_register(_jit, JIT_REGISTER_TMP0, rt);
-		DISASM("andi %s, %s, %u\n", NAME(rt), NAME(rs), imm);
+		TWO_REG_IMM_OP(andi, andi, uint16_t);
 		break;
 	}
 
 	case 015: // ORI
 	{
-		unsigned rt = (instr >> 16) & 31;
-		NOP_IF_RT_ZERO();
-		unsigned rs = (instr >> 21) & 31;
-		uint16_t imm = uint16_t(instr);
-		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
-		jit_ori(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, imm);
-		jit_store_register(_jit, JIT_REGISTER_TMP0, rt);
-		DISASM("ori %s, %s, %u\n", NAME(rt), NAME(rs), imm);
+		TWO_REG_IMM_OP(ori, ori, uint16_t);
 		break;
 	}
 
 	case 016: // XORI
 	{
-		unsigned rt = (instr >> 16) & 31;
-		if (rt == 0)
-			break;
-		unsigned rs = (instr >> 21) & 31;
-		uint16_t imm = uint16_t(instr);
-		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
-		jit_xori(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, imm);
-		jit_store_register(_jit, JIT_REGISTER_TMP0, rt);
-		DISASM("xori %s, %s, %u\n", NAME(rt), NAME(rs), imm);
+		TWO_REG_IMM_OP(xori, xori, uint16_t);
 		break;
 	}
 
@@ -894,141 +878,77 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		DISASM("cop2 %u\n", 0);
 		break;
 
+#define MEMORY_LOAD_OP(op, asmop, mask, endian_flip) \
+	unsigned rt = (instr >> 16) & 31; \
+	NOP_IF_RT_ZERO(); \
+	int16_t simm = int16_t(instr); \
+	unsigned rs = (instr >> 21) & 31; \
+	jit_load_register(_jit, JIT_REGISTER_TMP0, rs); \
+	jit_addi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, simm); \
+	jit_andi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, mask); \
+	if (endian_flip != 0) jit_xori(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, endian_flip); \
+	jit_##op(JIT_REGISTER_TMP1, JIT_REGISTER_DMEM, JIT_REGISTER_TMP0); \
+	jit_store_register(_jit, JIT_REGISTER_TMP1, rt); \
+	DISASM(#asmop " %s, %d(%s)\n", NAME(rt), simm, NAME(rs))
+
 	case 040: // LB
 	{
-		unsigned rt = (instr >> 16) & 31;
-		NOP_IF_RT_ZERO();
-		int16_t simm = int16_t(instr);
-		unsigned rs = (instr >> 21) & 31;
-
-		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
-		jit_addi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, simm);
-		jit_andi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, 0xfffu);
-		jit_xori(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, 3); // Endian-fixup.
-		jit_ldxr_c(JIT_REGISTER_TMP1, JIT_REGISTER_DMEM, JIT_REGISTER_TMP0);
-		jit_store_register(_jit, JIT_REGISTER_TMP1, rt);
-		DISASM("lb %s, %d(%s)\n", NAME(rt), simm, NAME(rs));
+		MEMORY_LOAD_OP(ldxr_c, lb, 0xfffu, 3);
 		break;
 	}
 
 	case 041: // LH
 	{
-		unsigned rt = (instr >> 16) & 31;
-		NOP_IF_RT_ZERO();
-		int16_t simm = int16_t(instr);
-		unsigned rs = (instr >> 21) & 31;
-
-		// TODO: Handle unaligned reads?
-		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
-		jit_addi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, simm);
-		jit_andi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, 0xffeu);
-		jit_xori(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, 2); // Endian-fixup.
-		jit_ldxr_s(JIT_REGISTER_TMP1, JIT_REGISTER_DMEM, JIT_REGISTER_TMP0);
-		jit_store_register(_jit, JIT_REGISTER_TMP1, rt);
-		DISASM("lh %s, %d(%s)\n", NAME(rt), simm, NAME(rs));
+		MEMORY_LOAD_OP(ldxr_s, lh, 0xffeu, 2);
 		break;
 	}
 
 	case 043: // LW
 	{
-		unsigned rt = (instr >> 16) & 31;
-		NOP_IF_RT_ZERO();
-		int16_t simm = int16_t(instr);
-		unsigned rs = (instr >> 21) & 31;
-
-		// TODO: Handle unaligned reads?
-		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
-		jit_addi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, simm);
-		jit_andi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, 0xffcu);
-		jit_ldxr(JIT_REGISTER_TMP1, JIT_REGISTER_DMEM, JIT_REGISTER_TMP0);
-		jit_store_register(_jit, JIT_REGISTER_TMP1, rt);
-		DISASM("lw %s, %d(%s)\n", NAME(rt), simm, NAME(rs));
+		MEMORY_LOAD_OP(ldxr_i, lw, 0xffcu, 0);
 		break;
 	}
 
 	case 044: // LBU
 	{
-		unsigned rt = (instr >> 16) & 31;
-		NOP_IF_RT_ZERO();
-		int16_t simm = int16_t(instr);
-		unsigned rs = (instr >> 21) & 31;
-
-		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
-		jit_addi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, simm);
-		jit_andi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, 0xfffu);
-		jit_xori(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, 3); // Endian-fixup.
-		jit_ldxr_uc(JIT_REGISTER_TMP1, JIT_REGISTER_DMEM, JIT_REGISTER_TMP0);
-		jit_store_register(_jit, JIT_REGISTER_TMP1, rt);
-		DISASM("lbu %s, %d(%s)\n", NAME(rt), simm, NAME(rs));
+		MEMORY_LOAD_OP(ldxr_uc, lbu, 0xfffu, 3);
 		break;
 	}
 
 	case 045: // LHU
 	{
-		unsigned rt = (instr >> 16) & 31;
-		NOP_IF_RT_ZERO();
-		int16_t simm = int16_t(instr);
-		unsigned rs = (instr >> 21) & 31;
-
-		// TODO: Handle unaligned reads?
-		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
-		jit_addi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, simm);
-		jit_andi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, 0xffeu);
-		jit_xori(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, 2); // Endian-fixup.
-		jit_ldxr_us(JIT_REGISTER_TMP1, JIT_REGISTER_DMEM, JIT_REGISTER_TMP0);
-		jit_store_register(_jit, JIT_REGISTER_TMP1, rt);
-		DISASM("lhu %s, %d(%s)\n", NAME(rt), simm, NAME(rs));
+		MEMORY_LOAD_OP(ldxr_us, lhu, 0xffeu, 2);
 		break;
 	}
 
+#define MEMORY_STORE_OP(op, asmop, mask, endian_flip) \
+	unsigned rt = (instr >> 16) & 31; \
+	NOP_IF_RT_ZERO(); \
+	int16_t simm = int16_t(instr); \
+	unsigned rs = (instr >> 21) & 31; \
+	jit_load_register(_jit, JIT_REGISTER_TMP0, rs); \
+	jit_load_register(_jit, JIT_REGISTER_TMP1, rt); \
+	jit_addi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, simm); \
+	jit_andi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, mask); \
+	if (endian_flip != 0) jit_xori(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, endian_flip); \
+	jit_##op(JIT_REGISTER_TMP0, JIT_REGISTER_DMEM, JIT_REGISTER_TMP1); \
+	DISASM(#asmop " %s, %d(%s)\n", NAME(rt), simm, NAME(rs))
+
 	case 050: // SB
 	{
-		unsigned rt = (instr >> 16) & 31;
-		NOP_IF_RT_ZERO();
-		int16_t simm = int16_t(instr);
-		unsigned rs = (instr >> 21) & 31;
-
-		// TODO: Handle unaligned stores?
-		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
-		jit_load_register(_jit, JIT_REGISTER_TMP1, rt);
-		jit_addi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, simm);
-		jit_andi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, 0xfffu);
-		jit_stxr_c(JIT_REGISTER_TMP0, JIT_REGISTER_DMEM, JIT_REGISTER_TMP1);
-		DISASM("sb %s, %d(%s)\n", NAME(rt), simm, NAME(rs));
+		MEMORY_STORE_OP(stxr_c, sb, 0xfffu, 3);
 		break;
 	}
 
 	case 051: // SH
 	{
-		unsigned rt = (instr >> 16) & 31;
-		NOP_IF_RT_ZERO();
-		int16_t simm = int16_t(instr);
-		unsigned rs = (instr >> 21) & 31;
-
-		// TODO: Handle unaligned stores?
-		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
-		jit_load_register(_jit, JIT_REGISTER_TMP1, rt);
-		jit_addi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, simm);
-		jit_andi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, 0xffeu);
-		jit_stxr_s(JIT_REGISTER_TMP0, JIT_REGISTER_DMEM, JIT_REGISTER_TMP1);
-		DISASM("sh %s, %d(%s)\n", NAME(rt), simm, NAME(rs));
+		MEMORY_STORE_OP(stxr_s, sh, 0xffeu, 2);
 		break;
 	}
 
 	case 053: // SW
 	{
-		unsigned rt = (instr >> 16) & 31;
-		NOP_IF_RT_ZERO();
-		int16_t simm = int16_t(instr);
-		unsigned rs = (instr >> 21) & 31;
-
-		// TODO: Handle unaligned stores?
-		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
-		jit_load_register(_jit, JIT_REGISTER_TMP1, rt);
-		jit_addi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, simm);
-		jit_andi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, 0xffcu);
-		jit_stxr(JIT_REGISTER_TMP0, JIT_REGISTER_DMEM, JIT_REGISTER_TMP1);
-		DISASM("sw %s, %d(%s)\n", NAME(rt), simm, NAME(rs));
+		MEMORY_STORE_OP(stxr_i, sw, 0xffcu, 0);
 		break;
 	}
 
@@ -1045,6 +965,67 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 	}
 }
 
+void CPU::jit_mark_block_entries(uint32_t pc, uint32_t end, bool *block_entries)
+{
+	unsigned count = end - pc;
+
+	// Find all places where we need to insert a label.
+	// This also affects codegen for static branches.
+	// If the delay slot for a static branch is a block entry,
+	// it is not actually a static branch, but a conditional one because
+	// some other instruction might have branches into the delay slot.
+	for (unsigned i = 0; i < count; i++)
+	{
+		uint32_t instr = state.imem[pc + i];
+		uint32_t type = instr >> 26;
+		uint32_t target;
+
+		// VU
+		if ((instr >> 25) == 0x25)
+			continue;
+
+		switch (type)
+		{
+		case 001: // REGIMM
+			switch ((instr >> 16) & 31)
+			{
+			case 000: // BLTZ
+			case 001: // BGEZ
+			case 021: // BGEZAL
+			case 020: // BLTZAL
+				target = (pc + i + 1 + instr) & 0x3ff;
+				if (target >= pc && target < end) // goto
+					block_entries[target - pc] = true;
+				break;
+
+			default:
+				break;
+			}
+			break;
+
+		case 002:
+		case 003:
+			// J is resolved by goto. Same with JAL.
+			target = instr & 0x3ff;
+			if (target >= pc && target < end) // goto
+				block_entries[target - pc] = true;
+			break;
+
+		case 004: // BEQ
+		case 005: // BNE
+		case 006: // BLEZ
+		case 007: // BGTZ
+			target = (pc + i + 1 + instr) & 0x3ff;
+			if (target >= pc && target < end) // goto
+				block_entries[target - pc] = true;
+			break;
+
+		default:
+			break;
+		}
+	}
+}
+
 Func CPU::jit_region(uint64_t hash, unsigned pc_word, unsigned instruction_count)
 {
 	mips_disasm.clear();
@@ -1053,19 +1034,25 @@ Func CPU::jit_region(uint64_t hash, unsigned pc_word, unsigned instruction_count
 	jit_prolog();
 	jit_tramp(JIT_FRAME_SIZE);
 
-	// We can potentially branch to every instruction in the block, so declare forward references to them here.
 	jit_node_t *branch_targets[CODE_BLOCK_WORDS];
 	jit_node_t *latent_delay_slot = nullptr;
 	local_branches.clear();
 
+	// Mark which instructions can be branched to via local goto.
+	bool block_entry[CODE_BLOCK_WORDS];
+	memset(block_entry, 0, instruction_count * sizeof(bool));
+	jit_mark_block_entries(pc_word, pc_word + instruction_count, block_entry);
+
 	InstructionInfo last_info = {};
 	for (unsigned i = 0; i < instruction_count; i++)
 	{
-		branch_targets[i] = jit_label();
+		if (block_entry[i])
+			branch_targets[i] = jit_label();
 
 		uint32_t instr = state.imem[pc_word + i];
 		InstructionInfo inst_info = {};
-		jit_instruction(_jit, (pc_word + i) << 2, instr, inst_info, last_info, i == 0);
+		jit_instruction(_jit, (pc_word + i) << 2, instr, inst_info, last_info, i == 0,
+		                i + 1 < instruction_count && branch_targets[i + 1]);
 
 		if (i == 0 && !inst_info.handles_delay_slot)
 		{

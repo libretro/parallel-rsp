@@ -100,12 +100,13 @@ private:
 		bool handles_delay_slot;
 	};
 	void jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr, InstructionInfo &info, const InstructionInfo &last_info,
-	                     bool first_instruction);
+	                     bool first_instruction, bool next_instruction_is_target);
 	void jit_exit(jit_state_t *_jit, uint32_t pc, const InstructionInfo &last_info, ReturnMode mode, bool first_instruction);
 	void jit_end_of_block(jit_state_t *_jit, uint32_t pc, const InstructionInfo &last_info);
 	static void jit_load_register(jit_state_t *_jit, unsigned jit_register, unsigned mips_register);
 	static void jit_store_register(jit_state_t *_jit, unsigned jit_register, unsigned mips_register);
 	void jit_handle_delay_slot(jit_state_t *_jit, const InstructionInfo &last_info, uint32_t base_pc, uint32_t end_pc);
+	void jit_mark_block_entries(uint32_t pc, uint32_t end, bool *block_entries);
 	std::string mips_disasm;
 	struct Link
 	{
