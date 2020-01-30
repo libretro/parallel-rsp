@@ -1,8 +1,18 @@
 #include "rsp-mips.h"
 
-u32 data[4] = { 0x10, 0x20, 0x30, 0x40 };
+u8 data[4] = { 0x10, 0x20, 0x30, 0x40 };
+
+__attribute__((noinline))
+int load_byte(int i)
+{
+	return data[i];
+}
 
 int main(void)
 {
-	rsp_debug_break(data[0], data[1], data[2], data[3]);
+	int a = load_byte(0);
+	int b = load_byte(1);
+	int c = load_byte(2);
+	int d = load_byte(3);
+	rsp_debug_break(a, b, c, d);
 }

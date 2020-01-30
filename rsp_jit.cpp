@@ -549,11 +549,27 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		}
 
 		case 010: // JR
-			DISASM("jr %u\n", 0);
+		{
+			info.branch = true;
+			info.indirect = true;
+			info.branch_target = rs;
+			DISASM("jr %s\n", NAME(rs));
 			break;
+		}
+
 		case 011: // JALR
-			DISASM("jalr %u\n", 0);
+		{
+			if (rd != 0)
+			{
+				jit_movi(JIT_REGISTER_TMP0, pc + 8);
+				jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
+			}
+			info.branch = true;
+			info.indirect = true;
+			info.branch_target = rs;
+			DISASM("jalr %s\n", NAME(rs));
 			break;
+		}
 
 		case 015: // BREAK
 		{
