@@ -229,8 +229,8 @@ void CPU::init_jit_thunks()
 	jit_getarg(JIT_REGISTER_STATE, state);
 	jit_ldxi_i(JIT_REGISTER_NEXT_PC, JIT_REGISTER_STATE, offsetof(CPUState, pc));
 	jit_ldxi(JIT_REGISTER_DMEM, JIT_REGISTER_STATE, offsetof(CPUState, dmem));
-	jit_movi(JIT_REGISTER_MODE, MODE_ENTER);
 
+	// When thunks need non-local goto, they jump here.
 	auto *entry_label = jit_indirect();
 
 	jit_prepare();
@@ -241,9 +241,6 @@ void CPU::init_jit_thunks()
 
 	// Jump to thunk.
 	jit_jmpr(JIT_REGISTER_NEXT_PC);
-
-	// Keep going.
-	jit_patch_at(jit_bnei(JIT_REGISTER_MODE, MODE_ENTER), entry_label);
 
 	// When we want to return, JIT thunks will jump here.
 	auto *return_label = jit_indirect();
