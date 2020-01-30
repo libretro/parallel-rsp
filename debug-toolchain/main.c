@@ -13,7 +13,7 @@ int count = 3;
 int main(void)
 {
 	int res = 0;
-	for (int i = 0; i < count; i++)
+	for (int i = 0; i < 3; i++)
 	{
 		res += load_byte(i);
 	}

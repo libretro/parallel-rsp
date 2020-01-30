@@ -105,8 +105,14 @@ private:
 	void jit_end_of_block(jit_state_t *_jit, uint32_t pc, const InstructionInfo &last_info);
 	static void jit_load_register(jit_state_t *_jit, unsigned jit_register, unsigned mips_register);
 	static void jit_store_register(jit_state_t *_jit, unsigned jit_register, unsigned mips_register);
-	void jit_handle_delay_slot(jit_state_t *_jit, const InstructionInfo &last_info, jit_node_t **local_targets, uint32_t base_pc, uint32_t end_pc);
+	void jit_handle_delay_slot(jit_state_t *_jit, const InstructionInfo &last_info, uint32_t base_pc, uint32_t end_pc);
 	std::string mips_disasm;
+	struct Link
+	{
+		jit_node_t *node;
+		unsigned local_index;
+	};
+	std::vector<Link> local_branches;
 };
 } // namespace JIT
 } // namespace RSP

@@ -240,6 +240,7 @@ void CPU::init_jit_thunks()
 	jit_retval(JIT_REGISTER_NEXT_PC);
 
 	// Jump to thunk.
+	jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 0);
 	jit_jmpr(JIT_REGISTER_NEXT_PC);
 
 	// When we want to return, JIT thunks will jump here.
@@ -317,17 +318,23 @@ void CPU::jit_end_of_block(jit_state_t *_jit, uint32_t pc, const CPU::Instructio
 }
 
 void CPU::jit_handle_delay_slot(jit_state_t *_jit, const InstructionInfo &last_info,
-                                jit_node_t **local_targets, uint32_t base_pc, uint32_t end_pc)
+                                uint32_t base_pc, uint32_t end_pc)
 {
 	if (last_info.conditional)
 	{
 		if (!last_info.indirect && last_info.branch_target >= base_pc && last_info.branch_target < end_pc)
 		{
-			jit_patch_at(jit_bnei(JIT_REGISTER_COND_BRANCH_TAKEN, 0), local_targets[(last_info.branch_target - base_pc) >> 2]);
+			jit_movr(JIT_REGISTER_TMP0, JIT_REGISTER_COND_BRANCH_TAKEN);
+			jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 0);
+
+			unsigned local_index = (last_info.branch_target - base_pc) >> 2;
+			local_branches.push_back({ jit_bnei(JIT_REGISTER_TMP0, 0), local_index });
 		}
 		else
 		{
-			auto *no_branch = jit_bnei(JIT_REGISTER_COND_BRANCH_TAKEN, 0);
+			jit_movr(JIT_REGISTER_TMP0, JIT_REGISTER_COND_BRANCH_TAKEN);
+			jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 0);
+			auto *no_branch = jit_beqi(JIT_REGISTER_TMP0, 0);
 			if (last_info.indirect)
 				jit_ldxi_i(JIT_REGISTER_NEXT_PC, JIT_REGISTER_STATE, offsetof(CPUState, sr) + 4 * last_info.branch_target);
 			else
@@ -338,9 +345,11 @@ void CPU::jit_handle_delay_slot(jit_state_t *_jit, const InstructionInfo &last_i
 	}
 	else
 	{
+		jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 0);
 		if (!last_info.indirect && last_info.branch_target >= base_pc && last_info.branch_target < end_pc)
 		{
-			jit_patch_at(jit_jmpi(), local_targets[(last_info.branch_target - base_pc) >> 2]);
+			unsigned local_index = (last_info.branch_target - base_pc) >> 2;
+			local_branches.push_back({ jit_jmpi(), local_index });
 		}
 		else
 		{
@@ -550,6 +559,8 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			info.branch = true;
 			info.indirect = true;
 			info.branch_target = rs;
+			info.conditional = true;
+			jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 1);
 			DISASM("jr %s\n", NAME(rs));
 			break;
 		}
@@ -564,6 +575,8 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			info.branch = true;
 			info.indirect = true;
 			info.branch_target = rs;
+			info.conditional = true;
+			jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 1);
 			DISASM("jalr %s\n", NAME(rs));
 			break;
 		}
@@ -706,6 +719,8 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		jit_store_register(_jit, JIT_REGISTER_TMP0, 31);
 		info.branch = true;
 		info.branch_target = target_pc;
+		info.conditional = true;
+		jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 1);
 		DISASM("jal 0x%03x\n", target_pc);
 		break;
 	}
@@ -715,6 +730,8 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		uint32_t target_pc = (instr & 0x3ffu) << 2;
 		info.branch = true;
 		info.branch_target = target_pc;
+		info.conditional = true;
+		jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 1);
 		DISASM("j 0x%03x\n", target_pc);
 		break;
 	}
@@ -725,7 +742,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		unsigned rt = (instr >> 16) & 31;
 		uint32_t target_pc = (pc + 4 + (instr << 2)) & 0xffc;
 		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
-		jit_load_register(_jit, JIT_REGISTER_TMP0, rt);
+		jit_load_register(_jit, JIT_REGISTER_TMP1, rt);
 		jit_eqr(JIT_REGISTER_COND_BRANCH_TAKEN, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1);
 		info.branch = true;
 		info.conditional = true;
@@ -740,7 +757,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		unsigned rt = (instr >> 16) & 31;
 		uint32_t target_pc = (pc + 4 + (instr << 2)) & 0xffc;
 		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
-		jit_load_register(_jit, JIT_REGISTER_TMP0, rt);
+		jit_load_register(_jit, JIT_REGISTER_TMP1, rt);
 		jit_ner(JIT_REGISTER_COND_BRANCH_TAKEN, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1);
 		info.branch = true;
 		info.conditional = true;
@@ -1037,16 +1054,14 @@ Func CPU::jit_region(uint64_t hash, unsigned pc_word, unsigned instruction_count
 	jit_tramp(JIT_FRAME_SIZE);
 
 	// We can potentially branch to every instruction in the block, so declare forward references to them here.
-	jit_node_t *branch_targets[CODE_BLOCK_SIZE];
-	for (unsigned i = 0; i < instruction_count; i++)
-		branch_targets[i] = jit_forward();
-
+	jit_node_t *branch_targets[CODE_BLOCK_WORDS];
 	jit_node_t *latent_delay_slot = nullptr;
+	local_branches.clear();
 
 	InstructionInfo last_info = {};
 	for (unsigned i = 0; i < instruction_count; i++)
 	{
-		jit_link(branch_targets[i]);
+		branch_targets[i] = jit_label();
 
 		uint32_t instr = state.imem[pc_word + i];
 		InstructionInfo inst_info = {};
@@ -1062,9 +1077,7 @@ Func CPU::jit_region(uint64_t hash, unsigned pc_word, unsigned instruction_count
 		else if (i != 0 && !inst_info.handles_delay_slot && last_info.branch)
 		{
 			// Normal handling of the delay slot.
-			jit_handle_delay_slot(_jit, last_info, branch_targets,
-			                      pc_word << 2,
-			                      (pc_word + instruction_count) << 2);
+			jit_handle_delay_slot(_jit, last_info, pc_word << 2, (pc_word + instruction_count) << 2);
 		}
 		last_info = inst_info;
 	}
@@ -1083,6 +1096,9 @@ Func CPU::jit_region(uint64_t hash, unsigned pc_word, unsigned instruction_count
 		jit_ldxi_i(JIT_REGISTER_NEXT_PC, JIT_REGISTER_STATE, offsetof(CPUState, branch_target));
 		jit_patch_abs(jit_jmpi(), thunks.enter_thunk);
 	}
+
+	for (auto &b : local_branches)
+		jit_patch_at(b.node, branch_targets[b.local_index]);
 
 	auto ret = reinterpret_cast<Func>(jit_emit());
 
