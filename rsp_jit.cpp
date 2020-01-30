@@ -24,6 +24,12 @@ namespace RSP
 {
 namespace JIT
 {
+static const char *reg_names[32] = {
+	"zero", "at", "v0", "v1", "a0", "a1", "a2", "a3", "t0", "t1", "t2", "t3", "t4", "t5", "t6", "t7",
+	"s0",   "s1", "s2", "s3", "s4", "s5", "s6", "s7", "t8", "t9", "k0", "k1", "gp", "sp", "s8", "ra",
+};
+#define NAME(reg) reg_names[reg]
+
 CPU::CPU()
 {
 	cleanup_jit_states.reserve(16 * 1024);
@@ -34,10 +40,7 @@ CPU::CPU()
 CPU::~CPU()
 {
 	for (auto *_jit : cleanup_jit_states)
-	{
-		jit_clear_state();
 		jit_destroy_state();
-	}
 	finish_jit();
 }
 
@@ -257,6 +260,7 @@ void CPU::init_jit_thunks()
 
 	printf(" === DISASM ===\n");
 	jit_disassemble();
+	jit_clear_state();
 	printf(" === END DISASM ===\n");
 	cleanup_jit_states.push_back(_jit);
 }
@@ -484,7 +488,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_load_register(_jit, JIT_REGISTER_TMP0, rt);
 			jit_lshi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, shift);
 			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
-			DISASM("sll r%u, r%u, %u\n", rd, rt, shift);
+			DISASM("sll %s, %s, %u\n", NAME(rd), NAME(rt), shift);
 			break;
 		}
 
@@ -494,7 +498,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_load_register(_jit, JIT_REGISTER_TMP0, rt);
 			jit_rshi_u(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, shift);
 			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
-			DISASM("srl r%u, r%u, %u\n", rd, rt, shift);
+			DISASM("srl %s, %s, %u\n", NAME(rd), NAME(rt), shift);
 			break;
 		}
 
@@ -504,7 +508,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_load_register(_jit, JIT_REGISTER_TMP0, rt);
 			jit_rshi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, shift);
 			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
-			DISASM("sra r%u, r%u, %u\n", rd, rt, shift);
+			DISASM("sra %s, %s, %u\n", NAME(rd), NAME(rt), shift);
 			break;
 		}
 
@@ -516,7 +520,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_andi(JIT_REGISTER_TMP1, JIT_REGISTER_TMP1, 31);
 			jit_lshr(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1);
 			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
-			DISASM("sllv r%u, r%u, r%u\n", rd, rt, rs);
+			DISASM("sllv %s, %s, %s\n", NAME(rd), NAME(rt), NAME(rs));
 			break;
 		}
 
@@ -528,7 +532,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_andi(JIT_REGISTER_TMP1, JIT_REGISTER_TMP1, 31);
 			jit_rshr_u(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1);
 			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
-			DISASM("srlv r%u, r%u, r%u\n", rd, rt, rs);
+			DISASM("srlv %s, %s, %s\n", NAME(rd), NAME(rt), NAME(rs));
 			break;
 		}
 
@@ -540,7 +544,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_andi(JIT_REGISTER_TMP1, JIT_REGISTER_TMP1, 31);
 			jit_rshr(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1);
 			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
-			DISASM("srav r%u, r%u, r%u\n", rd, rt, rs);
+			DISASM("srav %s, %s, %s\n", NAME(rd), NAME(rt), NAME(rs));
 			break;
 		}
 
@@ -567,7 +571,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_load_register(_jit, JIT_REGISTER_TMP1, rs);
 			jit_addr(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1);
 			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
-			DISASM("addu r%u, r%u, r%u\n", rd, rt, rs);
+			DISASM("addu %s, %s, %s\n", NAME(rd), NAME(rt), NAME(rs));
 			break;
 		}
 
@@ -579,7 +583,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_load_register(_jit, JIT_REGISTER_TMP1, rs);
 			jit_subr(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1);
 			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
-			DISASM("subu r%u, r%u, r%u\n", rd, rt, rs);
+			DISASM("subu %s, %s, %s\n", NAME(rd), NAME(rt), NAME(rs));
 			break;
 		}
 
@@ -590,7 +594,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_load_register(_jit, JIT_REGISTER_TMP1, rs);
 			jit_andr(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1);
 			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
-			DISASM("and r%u, r%u, r%u\n", rd, rt, rs);
+			DISASM("and %s, %s, %s\n", NAME(rd), NAME(rt), NAME(rs));
 			break;
 		}
 
@@ -601,7 +605,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_load_register(_jit, JIT_REGISTER_TMP1, rs);
 			jit_orr(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1);
 			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
-			DISASM("or r%u, r%u, r%u\n", rd, rt, rs);
+			DISASM("or %s, %s, %s\n", NAME(rd), NAME(rt), NAME(rs));
 			break;
 		}
 
@@ -612,7 +616,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_load_register(_jit, JIT_REGISTER_TMP1, rs);
 			jit_xorr(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1);
 			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
-			DISASM("xor r%u, r%u, r%u\n", rd, rt, rs);
+			DISASM("xor %s, %s, %s\n", NAME(rd), NAME(rt), NAME(rs));
 			break;
 		}
 
@@ -624,7 +628,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_orr(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1);
 			jit_xori(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, jit_word_t(-1));
 			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
-			DISASM("nor r%u, r%u, r%u\n", rd, rt, rs);
+			DISASM("nor %s, %s, %s\n", NAME(rd), NAME(rt), NAME(rs));
 			break;
 		}
 
@@ -635,7 +639,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_load_register(_jit, JIT_REGISTER_TMP1, rt);
 			jit_ltr(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1);
 			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
-			DISASM("slt r%u, r%u, r%u\n", rd, rt, rs);
+			DISASM("slt %s, %s, %s\n", NAME(rd), NAME(rt), NAME(rs));
 			break;
 		}
 
@@ -646,7 +650,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_load_register(_jit, JIT_REGISTER_TMP1, rt);
 			jit_ltr_u(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1);
 			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
-			DISASM("sltu r%u, r%u, r%u\n", rd, rt, rs);
+			DISASM("sltu %s, %s, %s\n", NAME(rd), NAME(rt), NAME(rs));
 			break;
 		}
 
@@ -729,7 +733,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
 		jit_addi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, simm);
 		jit_store_register(_jit, JIT_REGISTER_TMP0, rt);
-		DISASM("addi r%u, r%u, %d\n", rt, rs, simm);
+		DISASM("addi %s, %s, %d\n", NAME(rt), NAME(rs), simm);
 		break;
 	}
 
@@ -743,7 +747,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
 		jit_lti(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, simm);
 		jit_store_register(_jit, JIT_REGISTER_TMP0, rt);
-		DISASM("slti r%u, r%u, %d\n", rt, rs, simm);
+		DISASM("slti %s, %s, %d\n", NAME(rt), NAME(rs), simm);
 		break;
 	}
 
@@ -757,7 +761,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
 		jit_lti_u(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, imm);
 		jit_store_register(_jit, JIT_REGISTER_TMP0, rt);
-		DISASM("sltiu r%u, r%u, %u\n", rt, rs, imm);
+		DISASM("sltiu %s, %s, %u\n", NAME(rt), NAME(rs), imm);
 		break;
 	}
 
@@ -770,7 +774,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
 		jit_andi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, imm);
 		jit_store_register(_jit, JIT_REGISTER_TMP0, rt);
-		DISASM("andi r%u, r%u, %u\n", rt, rs, imm);
+		DISASM("andi %s, %s, %u\n", NAME(rt), NAME(rs), imm);
 		break;
 	}
 
@@ -783,7 +787,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
 		jit_ori(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, imm);
 		jit_store_register(_jit, JIT_REGISTER_TMP0, rt);
-		DISASM("ori r%u, r%u, %u\n", rt, rs, imm);
+		DISASM("ori %s, %s, %u\n", NAME(rt), NAME(rs), imm);
 		break;
 	}
 
@@ -797,7 +801,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
 		jit_xori(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, imm);
 		jit_store_register(_jit, JIT_REGISTER_TMP0, rt);
-		DISASM("xori r%u, r%u, %u\n", rt, rs, imm);
+		DISASM("xori %s, %s, %u\n", NAME(rt), NAME(rs), imm);
 		break;
 	}
 
@@ -808,7 +812,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		int16_t imm = int16_t(instr);
 		jit_movi(JIT_REGISTER_TMP0, imm << 16);
 		jit_store_register(_jit, JIT_REGISTER_TMP0, rt);
-		DISASM("lui r%u, %d\n", rt, imm);
+		DISASM("lui %s, %d\n", NAME(rt), imm);
 		break;
 	}
 
@@ -821,36 +825,142 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		break;
 
 	case 040: // LB
-		DISASM("lb %u\n", 0);
+	{
+		unsigned rt = (instr >> 16) & 31;
+		NOP_IF_RT_ZERO();
+		int16_t simm = int16_t(instr);
+		unsigned rs = (instr >> 21) & 31;
+
+		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
+		jit_addi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, simm);
+		jit_andi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, 0xfffu);
+		jit_xori(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, 3); // Endian-fixup.
+		jit_ldxr_c(JIT_REGISTER_TMP1, JIT_REGISTER_DMEM, JIT_REGISTER_TMP0);
+		jit_store_register(_jit, JIT_REGISTER_TMP1, rt);
+		DISASM("lb %s, %d(%s)\n", NAME(rt), simm, NAME(rs));
 		break;
+	}
 
 	case 041: // LH
-		DISASM("lh %u\n", 0);
+	{
+		unsigned rt = (instr >> 16) & 31;
+		NOP_IF_RT_ZERO();
+		int16_t simm = int16_t(instr);
+		unsigned rs = (instr >> 21) & 31;
+
+		// TODO: Handle unaligned reads?
+		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
+		jit_addi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, simm);
+		jit_andi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, 0xffeu);
+		jit_xori(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, 2); // Endian-fixup.
+		jit_ldxr_s(JIT_REGISTER_TMP1, JIT_REGISTER_DMEM, JIT_REGISTER_TMP0);
+		jit_store_register(_jit, JIT_REGISTER_TMP1, rt);
+		DISASM("lh %s, %d(%s)\n", NAME(rt), simm, NAME(rs));
 		break;
+	}
 
 	case 043: // LW
-		DISASM("lw %u\n", 0);
+	{
+		unsigned rt = (instr >> 16) & 31;
+		NOP_IF_RT_ZERO();
+		int16_t simm = int16_t(instr);
+		unsigned rs = (instr >> 21) & 31;
+
+		// TODO: Handle unaligned reads?
+		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
+		jit_addi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, simm);
+		jit_andi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, 0xffcu);
+		jit_ldxr(JIT_REGISTER_TMP1, JIT_REGISTER_DMEM, JIT_REGISTER_TMP0);
+		jit_store_register(_jit, JIT_REGISTER_TMP1, rt);
+		DISASM("lw %s, %d(%s)\n", NAME(rt), simm, NAME(rs));
 		break;
+	}
 
 	case 044: // LBU
-		DISASM("lbu %u\n", 0);
+	{
+		unsigned rt = (instr >> 16) & 31;
+		NOP_IF_RT_ZERO();
+		int16_t simm = int16_t(instr);
+		unsigned rs = (instr >> 21) & 31;
+
+		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
+		jit_addi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, simm);
+		jit_andi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, 0xfffu);
+		jit_xori(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, 3); // Endian-fixup.
+		jit_ldxr_uc(JIT_REGISTER_TMP1, JIT_REGISTER_DMEM, JIT_REGISTER_TMP0);
+		jit_store_register(_jit, JIT_REGISTER_TMP1, rt);
+		DISASM("lbu %s, %d(%s)\n", NAME(rt), simm, NAME(rs));
 		break;
+	}
 
 	case 045: // LHU
-		DISASM("lhu %u\n", 0);
+	{
+		unsigned rt = (instr >> 16) & 31;
+		NOP_IF_RT_ZERO();
+		int16_t simm = int16_t(instr);
+		unsigned rs = (instr >> 21) & 31;
+
+		// TODO: Handle unaligned reads?
+		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
+		jit_addi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, simm);
+		jit_andi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, 0xffeu);
+		jit_xori(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, 2); // Endian-fixup.
+		jit_ldxr_us(JIT_REGISTER_TMP1, JIT_REGISTER_DMEM, JIT_REGISTER_TMP0);
+		jit_store_register(_jit, JIT_REGISTER_TMP1, rt);
+		DISASM("lhu %s, %d(%s)\n", NAME(rt), simm, NAME(rs));
 		break;
+	}
 
 	case 050: // SB
-		DISASM("sb %u\n", 0);
+	{
+		unsigned rt = (instr >> 16) & 31;
+		NOP_IF_RT_ZERO();
+		int16_t simm = int16_t(instr);
+		unsigned rs = (instr >> 21) & 31;
+
+		// TODO: Handle unaligned stores?
+		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
+		jit_load_register(_jit, JIT_REGISTER_TMP1, rt);
+		jit_addi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, simm);
+		jit_andi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, 0xfffu);
+		jit_stxr_c(JIT_REGISTER_TMP0, JIT_REGISTER_DMEM, JIT_REGISTER_TMP1);
+		DISASM("sb %s, %d(%s)\n", NAME(rt), simm, NAME(rs));
 		break;
+	}
 
 	case 051: // SH
-		DISASM("sh %u\n", 0);
+	{
+		unsigned rt = (instr >> 16) & 31;
+		NOP_IF_RT_ZERO();
+		int16_t simm = int16_t(instr);
+		unsigned rs = (instr >> 21) & 31;
+
+		// TODO: Handle unaligned stores?
+		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
+		jit_load_register(_jit, JIT_REGISTER_TMP1, rt);
+		jit_addi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, simm);
+		jit_andi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, 0xffeu);
+		jit_stxr_s(JIT_REGISTER_TMP0, JIT_REGISTER_DMEM, JIT_REGISTER_TMP1);
+		DISASM("sh %s, %d(%s)\n", NAME(rt), simm, NAME(rs));
 		break;
+	}
 
 	case 053: // SW
-		DISASM("sw %u\n", 0);
+	{
+		unsigned rt = (instr >> 16) & 31;
+		NOP_IF_RT_ZERO();
+		int16_t simm = int16_t(instr);
+		unsigned rs = (instr >> 21) & 31;
+
+		// TODO: Handle unaligned stores?
+		jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
+		jit_load_register(_jit, JIT_REGISTER_TMP1, rt);
+		jit_addi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, simm);
+		jit_andi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, 0xffcu);
+		jit_stxr(JIT_REGISTER_TMP0, JIT_REGISTER_DMEM, JIT_REGISTER_TMP1);
+		DISASM("sw %s, %d(%s)\n", NAME(rt), simm, NAME(rs));
 		break;
+	}
 
 	case 062: // LWC2
 		DISASM("lcw2 %u\n", 0);
@@ -925,6 +1035,7 @@ Func CPU::jit_region(uint64_t hash, unsigned pc_word, unsigned instruction_count
 
 	printf(" === DISASM ===\n");
 	jit_disassemble();
+	jit_clear_state();
 	printf("%s\n", mips_disasm.c_str());
 	printf(" === DISASM END ===\n\n");
 	cleanup_jit_states.push_back(_jit);
@@ -958,12 +1069,6 @@ ReturnMode CPU::run()
 		}
 	}
 }
-
-static const char *reg_names[32] = {
-	"zero", "at", "v0", "v1", "a0", "a1", "a2", "a3", "t0", "t1", "t2", "t3", "t4", "t5", "t6", "t7",
-	"s0",   "s1", "s2", "s3", "s4", "s5", "s6", "s7", "t8", "t9", "k0", "k1", "gp", "sp", "s8", "ra",
-};
-#define NAME(reg) reg_names[reg]
 
 void CPU::print_registers()
 {
