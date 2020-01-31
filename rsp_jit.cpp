@@ -1470,7 +1470,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_finishi(reinterpret_cast<jit_pointer_t>(ops[rd]));
 			if (last_info.conditional)
 				jit_restore_cond_branch_taken(_jit);
-			DISASM("%s %s, %u, %d(%s)\n", op, NAME(rt), imm, simm, NAME(rs));
+			DISASM("%s v%u, %u, %d(%s)\n", op, rt, imm, simm, NAME(rs));
 		}
 		else
 			DISASM_NOP();
@@ -1512,7 +1512,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_finishi(reinterpret_cast<jit_pointer_t>(ops[rd]));
 			if (last_info.conditional)
 				jit_restore_cond_branch_taken(_jit);
-			DISASM("%s %s, %u, %d(%s)\n", op, NAME(rt), imm, simm, NAME(rs));
+			DISASM("%s v%u, %u, %d(%s)\n", op, rt, imm, simm, NAME(rs));
 		}
 		else
 			DISASM_NOP();

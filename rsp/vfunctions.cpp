@@ -19,7 +19,6 @@
 
 extern "C"
 {
-
 	//
 	// VABS
 	//
