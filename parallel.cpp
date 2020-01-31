@@ -1,4 +1,8 @@
+#ifdef DEBUG_JIT
+#include "rsp.hpp"
+#else
 #include "rsp_jit.hpp"
+#endif
 #include <stdint.h>
 
 #include "m64p_plugin.h"
@@ -10,7 +14,11 @@
 namespace RSP
 {
 RSP_INFO rsp;
+#ifdef DEBUG_JIT
+RSP::CPU cpu;
+#else
 RSP::JIT::CPU cpu;
+#endif
 short MFC0_count[32];
 int SP_STATUS_TIMEOUT;
 } // namespace RSP
