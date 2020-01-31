@@ -1683,21 +1683,20 @@ Func CPU::jit_region(uint64_t hash, unsigned pc_word, unsigned instruction_count
 
 	auto ret = reinterpret_cast<Func>(jit_emit());
 
-	printf(" === DISASM ===\n");
-	jit_disassemble();
+	//printf(" === DISASM ===\n");
+	//jit_disassemble();
 	jit_clear_state();
-	printf("%s\n", mips_disasm.c_str());
-	printf(" === DISASM END ===\n\n");
+	//printf("%s\n", mips_disasm.c_str());
+	//printf(" === DISASM END ===\n\n");
 	cleanup_jit_states.push_back(_jit);
 	return ret;
 }
 
 ReturnMode CPU::run()
 {
+	invalidate_code();
 	for (;;)
 	{
-		invalidate_code();
-
 		int ret = enter(state.pc);
 		switch (ret)
 		{
