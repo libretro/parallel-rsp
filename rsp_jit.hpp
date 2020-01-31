@@ -102,6 +102,7 @@ private:
 	void jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr, InstructionInfo &info, const InstructionInfo &last_info,
 	                     bool first_instruction, bool next_instruction_is_target);
 	void jit_exit(jit_state_t *_jit, uint32_t pc, const InstructionInfo &last_info, ReturnMode mode, bool first_instruction);
+	void jit_exit_dynamic(jit_state_t *_jit, uint32_t pc, const InstructionInfo &last_info, bool first_instruction);
 	void jit_end_of_block(jit_state_t *_jit, uint32_t pc, const InstructionInfo &last_info);
 	static void jit_load_register(jit_state_t *_jit, unsigned jit_register, unsigned mips_register);
 	static void jit_store_register(jit_state_t *_jit, unsigned jit_register, unsigned mips_register);

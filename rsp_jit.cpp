@@ -500,8 +500,16 @@ void CPU::jit_handle_delay_slot(jit_state_t *_jit, const InstructionInfo &last_i
 	}
 }
 
-void CPU::jit_exit(jit_state_t *_jit, uint32_t pc, const InstructionInfo &last_info, ReturnMode mode, bool first_instruction)
+void CPU::jit_exit(jit_state_t *_jit, uint32_t pc, const InstructionInfo &last_info,
+                   ReturnMode mode, bool first_instruction)
 {
+	jit_movi(JIT_REGISTER_MODE, mode);
+	jit_exit_dynamic(_jit, pc, last_info, first_instruction);
+}
+
+void CPU::jit_exit_dynamic(jit_state_t *_jit, uint32_t pc, const InstructionInfo &last_info, bool first_instruction)
+{
+	// We must not touch REGISTER_MODE / TMP1 here, fortunately we don't need to.
 	if (first_instruction)
 	{
 		// Need to consider that we need to move delay slot to PC.
@@ -511,7 +519,6 @@ void CPU::jit_exit(jit_state_t *_jit, uint32_t pc, const InstructionInfo &last_i
 
 		// Common case.
 		// Immediately exit.
-		jit_movi(JIT_REGISTER_MODE, mode);
 		jit_movi(JIT_REGISTER_NEXT_PC, (pc + 4) & 0xffcu);
 		jit_patch_abs(jit_jmpi(), thunks.return_thunk);
 
@@ -559,7 +566,6 @@ void CPU::jit_exit(jit_state_t *_jit, uint32_t pc, const InstructionInfo &last_i
 		jit_patch(to_end);
 	}
 
-	jit_movi(JIT_REGISTER_MODE, mode);
 	jit_patch_abs(jit_jmpi(), thunks.return_thunk);
 }
 
@@ -1148,8 +1154,64 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 	}
 
 	case 020: // COP0
-		DISASM("cop0 %u\n", 0);
+	{
+		unsigned rd = (instr >> 11) & 31;
+		unsigned rs = (instr >> 21) & 31;
+		unsigned rt = (instr >> 16) & 31;
+
+		switch (rs)
+		{
+		case 000: // MFC0
+		{
+			if (last_info.conditional)
+				jit_save_cond_branch_taken(_jit);
+
+			jit_prepare();
+			jit_pushargr(JIT_REGISTER_STATE);
+			jit_pushargi(rt);
+			jit_pushargi(rd);
+			jit_finishi(reinterpret_cast<jit_pointer_t>(RSP_MFC0));
+			jit_retval(JIT_REGISTER_MODE);
+
+			if (last_info.conditional)
+				jit_restore_cond_branch_taken(_jit);
+
+			jit_node_t *noexit = jit_beqi(JIT_REGISTER_MODE, MODE_CONTINUE);
+			jit_exit_dynamic(_jit, pc, last_info, first_instruction);
+			jit_patch(noexit);
+
+			DISASM("mfc0 %s, %s\n", NAME(rt), NAME(rd));
+			break;
+		}
+
+		case 004: // MTC0
+		{
+			if (last_info.conditional)
+				jit_save_cond_branch_taken(_jit);
+
+			jit_prepare();
+			jit_pushargr(JIT_REGISTER_STATE);
+			jit_pushargi(rd);
+			jit_pushargi(rt);
+			jit_finishi(reinterpret_cast<jit_pointer_t>(RSP_MTC0));
+			jit_retval(JIT_REGISTER_MODE);
+
+			if (last_info.conditional)
+				jit_restore_cond_branch_taken(_jit);
+
+			jit_node_t *noexit = jit_beqi(JIT_REGISTER_MODE, MODE_CONTINUE);
+			jit_exit_dynamic(_jit, pc, last_info, first_instruction);
+			jit_patch(noexit);
+
+			DISASM("mtc0 %s, %s\n", NAME(rd), NAME(rt));
+			break;
+		}
+
+		default:
+			break;
+		}
 		break;
+	}
 
 	case 022: // COP2
 		DISASM("cop2 %u\n", 0);
