@@ -120,6 +120,14 @@ private:
 	                              jit_pointer_t rsp_unaligned_op,
 	                              uint32_t endian_flip,
 	                              const InstructionInfo &last_info);
+
+	static void jit_save_cond_branch_taken(jit_state_t *_jit);
+	static void jit_restore_cond_branch_taken(jit_state_t *_jit);
+	static void jit_save_illegal_cond_branch_taken(jit_state_t *_jit);
+	static void jit_restore_illegal_cond_branch_taken(jit_state_t *_jit, unsigned reg);
+	static void jit_clear_illegal_cond_branch_taken(jit_state_t *_jit, unsigned tmp_reg);
+	static void jit_clear_cond_branch_taken(jit_state_t *_jit);
+
 	std::string mips_disasm;
 	struct Link
 	{

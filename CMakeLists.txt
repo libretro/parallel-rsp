@@ -132,4 +132,7 @@ if (PARALLEL_RSP_TESTS)
 	rsp_add_test(sw)
 	rsp_add_test(sh-unaligned)
 	rsp_add_test(sw-unaligned)
+	rsp_add_test(beq-impossible-delay-slot-second-taken)
+	rsp_add_test(beq-impossible-delay-slot-first-taken)
+	#rsp_add_test(beq-impossible-delay-slot-both-taken) Hangs the reference implementation :D
 endif()

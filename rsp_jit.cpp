@@ -265,6 +265,37 @@ extern "C"
 	}
 }
 
+void CPU::jit_save_cond_branch_taken(jit_state_t *_jit)
+{
+	jit_stxi(-JIT_FRAME_SIZE, JIT_FP, JIT_REGISTER_COND_BRANCH_TAKEN);
+}
+
+void CPU::jit_restore_cond_branch_taken(jit_state_t *_jit)
+{
+	jit_ldxi(JIT_REGISTER_COND_BRANCH_TAKEN, JIT_FP, -JIT_FRAME_SIZE);
+}
+
+void CPU::jit_save_illegal_cond_branch_taken(jit_state_t *_jit)
+{
+	jit_stxi(-JIT_FRAME_SIZE + sizeof(jit_word_t), JIT_FP, JIT_REGISTER_COND_BRANCH_TAKEN);
+}
+
+void CPU::jit_restore_illegal_cond_branch_taken(jit_state_t *_jit, unsigned reg)
+{
+	jit_ldxi(reg, JIT_FP, -JIT_FRAME_SIZE + sizeof(jit_word_t));
+}
+
+void CPU::jit_clear_illegal_cond_branch_taken(jit_state_t *_jit, unsigned tmp_reg)
+{
+	jit_movi(tmp_reg, 0);
+	jit_stxi(-JIT_FRAME_SIZE + sizeof(jit_word_t), JIT_FP, tmp_reg);
+}
+
+void CPU::jit_clear_cond_branch_taken(jit_state_t *_jit)
+{
+	jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 0);
+}
+
 void CPU::init_jit_thunks()
 {
 	jit_state_t *_jit = jit_new_state();
@@ -294,9 +325,8 @@ void CPU::init_jit_thunks()
 	// Jump to thunk.
 
 	// Clear out branch delay slots.
-	jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 0);
-	// JIT_FP[-JIT_FRAME_SIZE] is used for impossible branch delay slots.
-	jit_stxi(-JIT_FRAME_SIZE, JIT_FP, JIT_REGISTER_COND_BRANCH_TAKEN);
+	jit_clear_illegal_cond_branch_taken(_jit, JIT_REGISTER_COND_BRANCH_TAKEN);
+	jit_clear_cond_branch_taken(_jit);
 
 	jit_jmpr(JIT_REGISTER_NEXT_PC);
 
@@ -396,19 +426,10 @@ void CPU::jit_handle_impossible_delay_slot(jit_state_t *_jit, const InstructionI
 	jit_node_t *nobranch = nullptr;
 	if (last_info.conditional)
 	{
-		// Load saved conditional register.
-		jit_ldr(JIT_REGISTER_TMP0, JIT_FP);
-		jit_movi(JIT_REGISTER_TMP1, 0);
-		// Clear saved conditional register.
-		jit_stxi(-JIT_FRAME_SIZE, JIT_FP, JIT_REGISTER_TMP1);
+		jit_restore_illegal_cond_branch_taken(_jit, JIT_REGISTER_TMP0);
+		jit_clear_illegal_cond_branch_taken(_jit, JIT_REGISTER_TMP1);
 		nobranch = jit_beqi(JIT_REGISTER_TMP0, 0);
 	}
-
-	// Here we *will* take the branch.
-	if (last_info.indirect)
-		jit_load_register(_jit, JIT_REGISTER_NEXT_PC, last_info.branch_target);
-	else
-		jit_movi(JIT_REGISTER_NEXT_PC, last_info.branch_target);
 
 	// ... But do we have a delay slot to take care of?
 	if (!info.conditional)
@@ -416,10 +437,16 @@ void CPU::jit_handle_impossible_delay_slot(jit_state_t *_jit, const InstructionI
 	jit_stxi_i(offsetof(CPUState, has_delay_slot), JIT_REGISTER_STATE, JIT_REGISTER_COND_BRANCH_TAKEN);
 
 	if (info.indirect)
-		jit_load_register(_jit, JIT_REGISTER_TMP0, last_info.branch_target);
+		jit_load_register(_jit, JIT_REGISTER_TMP0, info.branch_target);
 	else
-		jit_movi(JIT_REGISTER_TMP0, last_info.branch_target);
+		jit_movi(JIT_REGISTER_TMP0, info.branch_target);
 	jit_stxi_i(offsetof(CPUState, branch_target), JIT_REGISTER_STATE, JIT_REGISTER_TMP0);
+
+	// Here we *will* take the branch.
+	if (last_info.indirect)
+		jit_load_register(_jit, JIT_REGISTER_NEXT_PC, last_info.branch_target);
+	else
+		jit_movi(JIT_REGISTER_NEXT_PC, last_info.branch_target);
 
 	jit_patch_abs(jit_jmpi(), thunks.enter_thunk);
 	jit_patch(nobranch);
@@ -604,7 +631,7 @@ void CPU::jit_emit_store_operation(jit_state_t *_jit,
 	{
 		// We're going to call, so need to save caller-save register we care about.
 		if (last_info.conditional)
-			jit_stxi(-JIT_FRAME_SIZE + sizeof(jit_word_t), JIT_FP, JIT_REGISTER_COND_BRANCH_TAKEN);
+			jit_save_cond_branch_taken(_jit);
 
 		jit_prepare();
 		jit_pushargr(JIT_REGISTER_DMEM);
@@ -614,7 +641,7 @@ void CPU::jit_emit_store_operation(jit_state_t *_jit,
 
 		// Restore branch state.
 		if (last_info.conditional)
-			jit_ldxi(JIT_REGISTER_COND_BRANCH_TAKEN, JIT_FP, -JIT_FRAME_SIZE + sizeof(jit_word_t));
+			jit_restore_cond_branch_taken(_jit);
 	}
 
 	if (align_mask)
@@ -670,7 +697,7 @@ void CPU::jit_emit_load_operation(jit_state_t *_jit,
 	{
 		// We're going to call, so need to save caller-save register we care about.
 		if (last_info.conditional)
-			jit_stxi(-JIT_FRAME_SIZE + sizeof(jit_word_t), JIT_FP, JIT_REGISTER_COND_BRANCH_TAKEN);
+			jit_save_cond_branch_taken(_jit);
 
 		jit_prepare();
 		jit_pushargr(JIT_REGISTER_DMEM);
@@ -681,7 +708,7 @@ void CPU::jit_emit_load_operation(jit_state_t *_jit,
 
 		// Restore branch state.
 		if (last_info.conditional)
-			jit_ldxi(JIT_REGISTER_COND_BRANCH_TAKEN, JIT_FP, -JIT_FRAME_SIZE + sizeof(jit_word_t));
+			jit_restore_cond_branch_taken(_jit);
 	}
 
 	if (align_mask)
@@ -776,7 +803,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		// so make sure we save the old branch taken register.
 #define FLUSH_IMPOSSIBLE_DELAY_SLOT() do { \
 	if (last_info.branch && last_info.conditional) \
-		jit_stxi(-JIT_FRAME_SIZE, JIT_FP, JIT_REGISTER_COND_BRANCH_TAKEN); \
+		jit_save_illegal_cond_branch_taken(_jit); \
 	} while(0)
 
 		case 010: // JR

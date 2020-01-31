@@ -324,17 +324,17 @@ int main(int argc, char *argv[])
 		reference_cpu.set_dmem(reference_dmem.data());
 		reference_cpu.set_imem(reference_imem.data());
 
-		printf("=== Running reference CPU ===\n");
-		reference_cpu.invalidate_imem();
-		reference_cpu.run();
-		fflush(stdout);
-		fflush(stderr);
-
 		printf("=== Running Lightning CPU ===\n");
 		fflush(stdout);
 		fflush(stderr);
 		cpu.invalidate_imem();
 		cpu.run();
+		fflush(stdout);
+		fflush(stderr);
+
+		printf("=== Running reference CPU ===\n");
+		reference_cpu.invalidate_imem();
+		reference_cpu.run();
 		fflush(stdout);
 		fflush(stderr);
 
