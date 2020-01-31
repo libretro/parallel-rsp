@@ -53,7 +53,7 @@ target_include_directories(parallel-rsp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(parallel-rsp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/arch/x86_64/rsp)
 target_compile_options(parallel-rsp PRIVATE ${PARALLEL_RSP_CXX_FLAGS})
 
-option(PARALLEL_RSP_BAKED_LIGHTNING "Use built-in Lightning." OFF)
+option(PARALLEL_RSP_BAKED_LIGHTNING "Use built-in Lightning." ON)
 
 target_compile_definitions(parallel-rsp PUBLIC PARALLEL_RSP_LIGHTNING)
 if (PARALLEL_RSP_BAKED_LIGHTNING)
