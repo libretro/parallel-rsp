@@ -622,7 +622,6 @@ void CPU::jit_emit_store_operation(jit_state_t *_jit,
 		jit_xori(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, endian_flip);
 
 	jit_emitter(_jit, JIT_REGISTER_TMP0, JIT_REGISTER_DMEM, JIT_REGISTER_TMP1);
-	jit_store_register(_jit, JIT_REGISTER_TMP1, rt);
 
 	jit_node_t *aligned = nullptr;
 	if (align_mask)
