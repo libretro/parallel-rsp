@@ -110,6 +110,16 @@ private:
 	                                      uint32_t base_pc, uint32_t end_pc);
 	void jit_handle_latent_delay_slot(jit_state_t *_jit, const InstructionInfo &last_info);
 	void jit_mark_block_entries(uint32_t pc, uint32_t end, bool *block_entries);
+	void jit_emit_load_operation(jit_state_t *_jit, uint32_t pc, uint32_t instr,
+	                             void (*jit_emitter)(jit_state_t *_jit, unsigned, unsigned, unsigned), const char *asmop,
+	                             jit_pointer_t rsp_unaligned_op,
+	                             uint32_t endian_flip,
+	                             const InstructionInfo &last_info);
+	void jit_emit_store_operation(jit_state_t *_jit, uint32_t pc, uint32_t instr,
+	                              void (*jit_emitter)(jit_state_t *_jit, unsigned, unsigned, unsigned), const char *asmop,
+	                              jit_pointer_t rsp_unaligned_op,
+	                              uint32_t endian_flip,
+	                              const InstructionInfo &last_info);
 	std::string mips_disasm;
 	struct Link
 	{

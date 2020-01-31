@@ -207,9 +207,61 @@ end:
 
 extern "C"
 {
-	static Func RSP_ENTER(void *cpu, unsigned pc)
+#define BYTE_ENDIAN_FIXUP(x, off) ((((x) + (off)) ^ 3) & 0xfffu)
+	static Func rsp_enter(void *cpu, unsigned pc)
 	{
 		return static_cast<CPU *>(cpu)->get_jit_block(pc);
+	}
+
+	static jit_word_t rsp_unaligned_lh(const uint8_t *dram, jit_word_t addr)
+	{
+		auto off0 = BYTE_ENDIAN_FIXUP(addr, 0);
+		auto off1 = BYTE_ENDIAN_FIXUP(addr, 1);
+		return jit_word_t(int16_t((dram[off0] << 0) |
+		                          (dram[off1] << 8)));
+	}
+
+	static jit_word_t rsp_unaligned_lw(const uint8_t *dram, jit_word_t addr)
+	{
+		auto off0 = BYTE_ENDIAN_FIXUP(addr, 0);
+		auto off1 = BYTE_ENDIAN_FIXUP(addr, 1);
+		auto off2 = BYTE_ENDIAN_FIXUP(addr, 2);
+		auto off3 = BYTE_ENDIAN_FIXUP(addr, 3);
+
+		// To sign extend, or not to sign extend, hm ...
+		return jit_word_t((int32_t(dram[off0]) << 0) |
+		                  (int32_t(dram[off1]) << 8) |
+		                  (int32_t(dram[off2]) << 16) |
+		                  (int32_t(dram[off3]) << 24));
+	}
+
+	static jit_uword_t rsp_unaligned_lhu(const uint8_t *dram, jit_word_t addr)
+	{
+		auto off0 = BYTE_ENDIAN_FIXUP(addr, 0);
+		auto off1 = BYTE_ENDIAN_FIXUP(addr, 1);
+		return jit_word_t(uint16_t((dram[off0] << 0) |
+		                          (dram[off1] << 8)));
+	}
+
+	static void rsp_unaligned_sh(uint8_t *dram, jit_word_t addr, jit_word_t data)
+	{
+		auto off0 = BYTE_ENDIAN_FIXUP(addr, 0);
+		auto off1 = BYTE_ENDIAN_FIXUP(addr, 1);
+		dram[off0] = data & 0xff;
+		dram[off1] = (data >> 8) & 0xff;
+	}
+
+	static void rsp_unaligned_sw(uint8_t *dram, jit_word_t addr, jit_word_t data)
+	{
+		auto off0 = BYTE_ENDIAN_FIXUP(addr, 0);
+		auto off1 = BYTE_ENDIAN_FIXUP(addr, 1);
+		auto off2 = BYTE_ENDIAN_FIXUP(addr, 2);
+		auto off3 = BYTE_ENDIAN_FIXUP(addr, 3);
+
+		dram[off0] = data & 0xff;
+		dram[off1] = (data >> 8) & 0xff;
+		dram[off2] = (data >> 16) & 0xff;
+		dram[off3] = (data >> 24) & 0xff;
 	}
 }
 
@@ -236,7 +288,7 @@ void CPU::init_jit_thunks()
 	jit_prepare();
 	jit_pushargr(JIT_REGISTER_SELF);
 	jit_pushargr(JIT_REGISTER_NEXT_PC);
-	jit_finishi(reinterpret_cast<jit_pointer_t>(RSP_ENTER));
+	jit_finishi(reinterpret_cast<jit_pointer_t>(rsp_enter));
 	jit_retval(JIT_REGISTER_NEXT_PC);
 
 	// Jump to thunk.
@@ -511,6 +563,130 @@ void CPU::jit_store_register(jit_state_t *_jit, unsigned jit_register, unsigned 
     sprintf(buf, "0x%03x   nop\n", pc); \
     mips_disasm += buf; \
 } while(0)
+
+void CPU::jit_emit_store_operation(jit_state_t *_jit,
+                                   uint32_t pc, uint32_t instr,
+                                   void (*jit_emitter)(jit_state_t *jit, unsigned, unsigned, unsigned), const char *asmop,
+                                   jit_pointer_t rsp_unaligned_op,
+                                   uint32_t endian_flip,
+                                   const InstructionInfo &last_info)
+{
+	uint32_t align_mask = 3 - endian_flip;
+	unsigned rt = (instr >> 16) & 31;
+	int16_t simm = int16_t(instr);
+	unsigned rs = (instr >> 21) & 31;
+	jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
+	jit_load_register(_jit, JIT_REGISTER_TMP1, rt);
+	jit_addi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, simm);
+	jit_andi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, 0xfffu);
+
+	// If we are unaligned, it gets very messy to JIT, so just thunk it out to C code.
+	jit_node_t *unaligned = nullptr;
+	if (align_mask)
+		unaligned = jit_bmsi(JIT_REGISTER_TMP0, align_mask);
+
+	// The MIPS is big endian, but the words are swapped per word in integration, so it's kinda little-endian,
+	// except we need to XOR the address for byte and half-word accesses.
+	if (endian_flip != 0)
+		jit_xori(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, endian_flip);
+
+	jit_emitter(_jit, JIT_REGISTER_TMP1, JIT_REGISTER_DMEM, JIT_REGISTER_TMP0);
+	jit_store_register(_jit, JIT_REGISTER_TMP1, rt);
+
+	jit_node_t *aligned = nullptr;
+	if (align_mask)
+	{
+		aligned = jit_jmpi();
+		jit_patch(unaligned);
+	}
+
+	if (align_mask)
+	{
+		// We're going to call, so need to save caller-save register we care about.
+		if (last_info.conditional)
+			jit_stxi(-JIT_FRAME_SIZE + sizeof(jit_word_t), JIT_FP, JIT_REGISTER_COND_BRANCH_TAKEN);
+
+		jit_prepare();
+		jit_pushargr(JIT_REGISTER_DMEM);
+		jit_pushargr(JIT_REGISTER_TMP0);
+		jit_pushargr(JIT_REGISTER_TMP1);
+		jit_finishi(rsp_unaligned_op);
+
+		// Restore branch state.
+		if (last_info.conditional)
+			jit_ldxi(JIT_REGISTER_COND_BRANCH_TAKEN, JIT_FP, -JIT_FRAME_SIZE + sizeof(jit_word_t));
+	}
+
+	jit_patch(aligned);
+	DISASM("%s %s, %d(%s)\n", asmop, NAME(rt), simm, NAME(rs));
+}
+
+// The RSP may or may not have a load-delay slot, but it doesn't seem to matter in practice, so just emulate without
+// a load-delay slot.
+
+void CPU::jit_emit_load_operation(jit_state_t *_jit,
+                                  uint32_t pc, uint32_t instr,
+                                  void (*jit_emitter)(jit_state_t *jit, unsigned, unsigned, unsigned), const char *asmop,
+                                  jit_pointer_t rsp_unaligned_op,
+                                  uint32_t endian_flip,
+                                  const InstructionInfo &last_info)
+{
+	uint32_t align_mask = endian_flip ^ 3;
+	unsigned rt = (instr >> 16) & 31;
+	if (rt == 0)
+	{
+		DISASM_NOP();
+		return;
+	}
+
+	int16_t simm = int16_t(instr);
+	unsigned rs = (instr >> 21) & 31;
+	jit_load_register(_jit, JIT_REGISTER_TMP0, rs);
+	jit_addi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, simm);
+	jit_andi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, 0xfffu);
+
+	// If we are unaligned, it gets very messy to JIT, so just thunk it out to C code.
+	jit_node_t *unaligned = nullptr;
+	if (align_mask)
+		unaligned = jit_bmsi(JIT_REGISTER_TMP0, align_mask);
+
+	// The MIPS is big endian, but the words are swapped per word in integration, so it's kinda little-endian,
+	// except we need to XOR the address for byte and half-word accesses.
+	if (endian_flip != 0)
+		jit_xori(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, endian_flip);
+
+	jit_emitter(_jit, JIT_REGISTER_TMP1, JIT_REGISTER_DMEM, JIT_REGISTER_TMP0);
+	jit_store_register(_jit, JIT_REGISTER_TMP1, rt);
+
+	jit_node_t *aligned = nullptr;
+	if (align_mask)
+	{
+		aligned = jit_jmpi();
+		jit_patch(unaligned);
+	}
+
+	if (align_mask)
+	{
+		// We're going to call, so need to save caller-save register we care about.
+		if (last_info.conditional)
+			jit_stxi(-JIT_FRAME_SIZE + sizeof(jit_word_t), JIT_FP, JIT_REGISTER_COND_BRANCH_TAKEN);
+
+		jit_prepare();
+		jit_pushargr(JIT_REGISTER_DMEM);
+		jit_pushargr(JIT_REGISTER_TMP0);
+		jit_finishi(rsp_unaligned_op);
+		jit_retval(JIT_REGISTER_TMP0);
+		jit_store_register(_jit, JIT_REGISTER_TMP0, rt);
+
+		// Restore branch state.
+		if (last_info.conditional)
+			jit_ldxi(JIT_REGISTER_COND_BRANCH_TAKEN, JIT_FP, -JIT_FRAME_SIZE + sizeof(jit_word_t));
+	}
+
+	if (align_mask)
+		jit_patch(aligned);
+	DISASM("%s %s, %d(%s)\n", asmop, NAME(rt), simm, NAME(rs));
+}
 
 void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
                           InstructionInfo &info, const InstructionInfo &last_info,
@@ -953,77 +1129,83 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		DISASM("cop2 %u\n", 0);
 		break;
 
-#define MEMORY_LOAD_OP(op, asmop, mask, endian_flip) \
-	unsigned rt = (instr >> 16) & 31; \
-	NOP_IF_RT_ZERO(); \
-	int16_t simm = int16_t(instr); \
-	unsigned rs = (instr >> 21) & 31; \
-	jit_load_register(_jit, JIT_REGISTER_TMP0, rs); \
-	jit_addi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, simm); \
-	jit_andi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, mask); \
-	if (endian_flip != 0) jit_xori(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, endian_flip); \
-	jit_##op(JIT_REGISTER_TMP1, JIT_REGISTER_DMEM, JIT_REGISTER_TMP0); \
-	jit_store_register(_jit, JIT_REGISTER_TMP1, rt); \
-	DISASM(#asmop " %s, %d(%s)\n", NAME(rt), simm, NAME(rs))
-
 	case 040: // LB
 	{
-		MEMORY_LOAD_OP(ldxr_c, lb, 0xfffu, 3);
+		jit_emit_load_operation(_jit, pc, instr,
+		                        [](jit_state_t *_jit, unsigned a, unsigned b, unsigned c) { jit_ldxr_c(a, b, c); },
+		                        "lb",
+		                        nullptr,
+		                        3, last_info);
 		break;
 	}
 
 	case 041: // LH
 	{
-		MEMORY_LOAD_OP(ldxr_s, lh, 0xffeu, 2);
+		jit_emit_load_operation(_jit, pc, instr,
+		                        [](jit_state_t *_jit, unsigned a, unsigned b, unsigned c) { jit_ldxr_s(a, b, c); },
+		                        "lh",
+		                        reinterpret_cast<jit_pointer_t>(rsp_unaligned_lh),
+		                        2, last_info);
 		break;
 	}
 
 	case 043: // LW
 	{
-		MEMORY_LOAD_OP(ldxr_i, lw, 0xffcu, 0);
+		jit_emit_load_operation(_jit, pc, instr,
+		                        [](jit_state_t *_jit, unsigned a, unsigned b, unsigned c) { jit_ldxr_i(a, b, c); },
+		                        "lw",
+		                        reinterpret_cast<jit_pointer_t>(rsp_unaligned_lw),
+		                        0, last_info);
 		break;
 	}
 
 	case 044: // LBU
 	{
-		MEMORY_LOAD_OP(ldxr_uc, lbu, 0xfffu, 3);
+		jit_emit_load_operation(_jit, pc, instr,
+		                        [](jit_state_t *_jit, unsigned a, unsigned b, unsigned c) { jit_ldxr_uc(a, b, c); },
+		                        "lbu",
+		                        nullptr,
+		                        3, last_info);
 		break;
 	}
 
 	case 045: // LHU
 	{
-		MEMORY_LOAD_OP(ldxr_us, lhu, 0xffeu, 2);
+		jit_emit_load_operation(_jit, pc, instr,
+		                        [](jit_state_t *_jit, unsigned a, unsigned b, unsigned c) { jit_ldxr_us(a, b, c); },
+		                        "lhu",
+		                        reinterpret_cast<jit_pointer_t>(rsp_unaligned_lhu),
+		                        2, last_info);
 		break;
 	}
 
-#define MEMORY_STORE_OP(op, asmop, mask, endian_flip) \
-	unsigned rt = (instr >> 16) & 31; \
-	NOP_IF_RT_ZERO(); \
-	int16_t simm = int16_t(instr); \
-	unsigned rs = (instr >> 21) & 31; \
-	jit_load_register(_jit, JIT_REGISTER_TMP0, rs); \
-	jit_load_register(_jit, JIT_REGISTER_TMP1, rt); \
-	jit_addi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, simm); \
-	jit_andi(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, mask); \
-	if (endian_flip != 0) jit_xori(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, endian_flip); \
-	jit_##op(JIT_REGISTER_TMP0, JIT_REGISTER_DMEM, JIT_REGISTER_TMP1); \
-	DISASM(#asmop " %s, %d(%s)\n", NAME(rt), simm, NAME(rs))
-
 	case 050: // SB
 	{
-		MEMORY_STORE_OP(stxr_c, sb, 0xfffu, 3);
+		jit_emit_load_operation(_jit, pc, instr,
+		                        [](jit_state_t *_jit, unsigned a, unsigned b, unsigned c) { jit_stxr_c(a, b, c); },
+		                        "sb",
+		                        nullptr,
+		                        3, last_info);
 		break;
 	}
 
 	case 051: // SH
 	{
-		MEMORY_STORE_OP(stxr_s, sh, 0xffeu, 2);
+		jit_emit_load_operation(_jit, pc, instr,
+		                        [](jit_state_t *_jit, unsigned a, unsigned b, unsigned c) { jit_stxr_s(a, b, c); },
+		                        "sh",
+		                        reinterpret_cast<jit_pointer_t>(rsp_unaligned_sh),
+		                        2, last_info);
 		break;
 	}
 
 	case 053: // SW
 	{
-		MEMORY_STORE_OP(stxr_i, sw, 0xffcu, 0);
+		jit_emit_load_operation(_jit, pc, instr,
+		                        [](jit_state_t *_jit, unsigned a, unsigned b, unsigned c) { jit_stxr_i(a, b, c); },
+		                        "sh",
+		                        reinterpret_cast<jit_pointer_t>(rsp_unaligned_sw),
+		                        0, last_info);
 		break;
 	}
 
