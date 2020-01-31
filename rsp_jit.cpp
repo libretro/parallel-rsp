@@ -521,26 +521,22 @@ void CPU::jit_exit(jit_state_t *_jit, uint32_t pc, const InstructionInfo &last_i
 		// jit_exit is never called from a branch instruction, so we do not have to handle double branch delay slots here.
 		jit_movi(JIT_REGISTER_NEXT_PC, 0);
 		jit_stxi_i(offsetof(CPUState, has_delay_slot), JIT_REGISTER_STATE, JIT_REGISTER_NEXT_PC);
-		jit_movi(JIT_REGISTER_MODE, mode);
 		jit_ldxi_i(JIT_REGISTER_NEXT_PC, JIT_REGISTER_STATE, offsetof(CPUState, branch_target));
 	}
 	else if (!last_info.branch)
 	{
 		// Immediately exit.
-		jit_movi(JIT_REGISTER_MODE, mode);
 		jit_movi(JIT_REGISTER_NEXT_PC, (pc + 4) & 0xffcu);
 	}
 	else if (!last_info.indirect && !last_info.conditional)
 	{
 		// Redirect PC to whatever value we were supposed to branch to.
-		jit_movi(JIT_REGISTER_MODE, mode);
 		jit_movi(JIT_REGISTER_NEXT_PC, last_info.branch_target);
 	}
 	else if (!last_info.conditional)
 	{
 		// We have an indirect branch, load that register into PC.
 		jit_load_register(_jit, JIT_REGISTER_NEXT_PC, last_info.branch_target);
-		jit_movi(JIT_REGISTER_MODE, mode);
 	}
 	else if (last_info.indirect)
 	{
@@ -563,6 +559,7 @@ void CPU::jit_exit(jit_state_t *_jit, uint32_t pc, const InstructionInfo &last_i
 		jit_patch(to_end);
 	}
 
+	jit_movi(JIT_REGISTER_MODE, mode);
 	jit_patch_abs(jit_jmpi(), thunks.return_thunk);
 }
 

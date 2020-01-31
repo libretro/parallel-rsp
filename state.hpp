@@ -6,7 +6,7 @@
 #define DMEM_SIZE (4 * 1024)
 #define IMEM_SIZE (4 * 1024)
 #define DMEM_WORDS (DMEM_SIZE / 4)
-#define IMEM_WORDS (DMEM_SIZE / 4)
+#define IMEM_WORDS (IMEM_SIZE / 4)
 #define CODE_BLOCK_SIZE (256)
 #define CODE_BLOCK_WORDS (CODE_BLOCK_SIZE / 4)
 #define CODE_BLOCK_SIZE_LOG2 (8)
