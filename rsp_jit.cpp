@@ -384,11 +384,11 @@ void CPU::jit_end_of_block(jit_state_t *_jit, uint32_t pc, const CPU::Instructio
 {
 	// If we run off the end of a block with a pending delay slot, we need to move it to CPUState.
 	// We always branch to the next PC, and the delay slot will be handled after the first instruction in next block.
-	auto *forward = jit_forward();
+	jit_node_t *forward = nullptr;
 	if (last_info.branch)
 	{
 		if (last_info.conditional)
-			jit_patch_at(jit_beqi(JIT_REGISTER_COND_BRANCH_TAKEN, 0), forward);
+			forward = jit_beqi(JIT_REGISTER_COND_BRANCH_TAKEN, 0);
 
 		if (last_info.indirect)
 			jit_load_register(_jit, JIT_REGISTER_TMP0, last_info.branch_target);
@@ -399,7 +399,8 @@ void CPU::jit_end_of_block(jit_state_t *_jit, uint32_t pc, const CPU::Instructio
 		jit_stxi_i(offsetof(CPUState, has_delay_slot), JIT_REGISTER_STATE, JIT_REGISTER_TMP0);
 	}
 
-	jit_link(forward);
+	if (forward)
+		jit_patch(forward);
 	jit_movi(JIT_REGISTER_NEXT_PC, pc);
 	jit_patch_abs(jit_jmpi(), thunks.enter_thunk);
 }
