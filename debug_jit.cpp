@@ -37,7 +37,7 @@ DebugBlock::Impl::~Impl()
 		dlclose(dylib);
 
 	remove(soname.c_str());
-	//remove(name.c_str());
+	remove(name.c_str());
 }
 
 bool DebugBlock::compile(uint64_t hash, const std::string &source)
