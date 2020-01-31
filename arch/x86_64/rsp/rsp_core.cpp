@@ -7,7 +7,7 @@
 // 'LICENSE', which is part of this source code package.
 //
 
-#include "../../../rsp.hpp"
+#include "../../../state.hpp"
 #include "rsp.h"
 #include <string.h>
 

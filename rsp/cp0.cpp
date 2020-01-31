@@ -1,8 +1,7 @@
-#include "../rsp.hpp"
 #include "../state.hpp"
 
 #ifdef PARALLEL_INTEGRATION
-#include "../Rsp_#1.1.h"
+#include "../rsp_1.1.h"
 #include "m64p_plugin.h"
 namespace RSP
 {
@@ -295,7 +294,6 @@ extern "C"
 			break;
 
 		case CP0_REGISTER_CMD_CLOCK:
-			fprintf(stderr, "CMD_CLOCK");
 			*rsp->cp0.cr[CP0_REGISTER_CMD_CLOCK] = val;
 			break;
 

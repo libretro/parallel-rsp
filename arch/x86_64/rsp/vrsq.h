@@ -6,6 +6,7 @@
 //
 
 #include "../../../rsp/reciprocal.h"
+#include <string.h>
 
 // Mask table for vrsq(LH) functions.
 alignas(16) static const uint16_t vrsq_mask_table[8][8] = {

@@ -1,4 +1,4 @@
-#include "rsp.hpp"
+#include "rsp_jit.hpp"
 #include <stdint.h>
 
 #include "m64p_plugin.h"
@@ -10,7 +10,7 @@
 namespace RSP
 {
 RSP_INFO rsp;
-CPU cpu;
+RSP::JIT::CPU cpu;
 short MFC0_count[32];
 int SP_STATUS_TIMEOUT;
 } // namespace RSP

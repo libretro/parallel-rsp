@@ -8,9 +8,10 @@
 // 'LICENSE', which is part of this source code package.
 //
 
-#include "../rsp.hpp"
+#include "../state.hpp"
 #include "../rsp_op.hpp"
 #include "rsp_impl.h"
+#include <stdio.h>
 
 #define LOAD_VS() rsp_vect_load_unshuffled_operand(rsp->cp2.regs[vs].e)
 #define LOAD_VT() rsp_vect_load_and_shuffle_operand(rsp->cp2.regs[vt].e, e)
