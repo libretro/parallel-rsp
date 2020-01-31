@@ -93,7 +93,8 @@ if (PARALLEL_RSP_TESTS)
 	function(rsp_add_test NAME)
 		add_custom_target(rsp-test-binary-${NAME}
 				COMMAND ${CMAKE_MAKE_PROGRAM} RSP_TEST=${NAME} -j1
-				WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/debug-toolchain)
+				WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/debug-toolchain
+				DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/debug-toolchain/${NAME}.s)
 		add_dependencies(rsp-test-binary-${NAME} rsp-test-crt)
 		add_dependencies(rsp-tests rsp-test-binary-${NAME})
 
@@ -124,4 +125,11 @@ if (PARALLEL_RSP_TESTS)
 	rsp_add_test(lhu)
 	rsp_add_test(lh-unaligned)
 	rsp_add_test(lhu-unaligned)
+	rsp_add_test(lw)
+	rsp_add_test(lw-unaligned)
+	rsp_add_test(sb)
+	rsp_add_test(sh)
+	rsp_add_test(sw)
+	rsp_add_test(sh-unaligned)
+	rsp_add_test(sw-unaligned)
 endif()

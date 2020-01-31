@@ -313,10 +313,10 @@ void CPU::init_jit_thunks()
 	thunks.enter_thunk = jit_address(entry_label);
 	thunks.return_thunk = jit_address(return_label);
 
-	printf(" === DISASM ===\n");
-	jit_disassemble();
+	//printf(" === DISASM ===\n");
+	//jit_disassemble();
 	jit_clear_state();
-	printf(" === END DISASM ===\n");
+	//printf(" === END DISASM ===\n");
 	cleanup_jit_states.push_back(_jit);
 }
 
@@ -590,7 +590,7 @@ void CPU::jit_emit_store_operation(jit_state_t *_jit,
 	if (endian_flip != 0)
 		jit_xori(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, endian_flip);
 
-	jit_emitter(_jit, JIT_REGISTER_TMP1, JIT_REGISTER_DMEM, JIT_REGISTER_TMP0);
+	jit_emitter(_jit, JIT_REGISTER_TMP0, JIT_REGISTER_DMEM, JIT_REGISTER_TMP1);
 	jit_store_register(_jit, JIT_REGISTER_TMP1, rt);
 
 	jit_node_t *aligned = nullptr;
@@ -617,7 +617,8 @@ void CPU::jit_emit_store_operation(jit_state_t *_jit,
 			jit_ldxi(JIT_REGISTER_COND_BRANCH_TAKEN, JIT_FP, -JIT_FRAME_SIZE + sizeof(jit_word_t));
 	}
 
-	jit_patch(aligned);
+	if (align_mask)
+		jit_patch(aligned);
 	DISASM("%s %s, %d(%s)\n", asmop, NAME(rt), simm, NAME(rs));
 }
 
@@ -1181,31 +1182,31 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 
 	case 050: // SB
 	{
-		jit_emit_load_operation(_jit, pc, instr,
-		                        [](jit_state_t *_jit, unsigned a, unsigned b, unsigned c) { jit_stxr_c(a, b, c); },
-		                        "sb",
-		                        nullptr,
-		                        3, last_info);
+		jit_emit_store_operation(_jit, pc, instr,
+		                         [](jit_state_t *_jit, unsigned a, unsigned b, unsigned c) { jit_stxr_c(a, b, c); },
+		                         "sb",
+		                         nullptr,
+		                         3, last_info);
 		break;
 	}
 
 	case 051: // SH
 	{
-		jit_emit_load_operation(_jit, pc, instr,
-		                        [](jit_state_t *_jit, unsigned a, unsigned b, unsigned c) { jit_stxr_s(a, b, c); },
-		                        "sh",
-		                        reinterpret_cast<jit_pointer_t>(rsp_unaligned_sh),
-		                        2, last_info);
+		jit_emit_store_operation(_jit, pc, instr,
+		                         [](jit_state_t *_jit, unsigned a, unsigned b, unsigned c) { jit_stxr_s(a, b, c); },
+		                         "sh",
+		                         reinterpret_cast<jit_pointer_t>(rsp_unaligned_sh),
+		                         2, last_info);
 		break;
 	}
 
 	case 053: // SW
 	{
-		jit_emit_load_operation(_jit, pc, instr,
-		                        [](jit_state_t *_jit, unsigned a, unsigned b, unsigned c) { jit_stxr_i(a, b, c); },
-		                        "sh",
-		                        reinterpret_cast<jit_pointer_t>(rsp_unaligned_sw),
-		                        0, last_info);
+		jit_emit_store_operation(_jit, pc, instr,
+		                         [](jit_state_t *_jit, unsigned a, unsigned b, unsigned c) { jit_stxr_i(a, b, c); },
+		                         "sh",
+		                         reinterpret_cast<jit_pointer_t>(rsp_unaligned_sw),
+		                         0, last_info);
 		break;
 	}
 
