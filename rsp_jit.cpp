@@ -1346,12 +1346,12 @@ Func CPU::jit_region(uint64_t hash, unsigned pc_word, unsigned instruction_count
 	jit_prolog();
 	jit_tramp(JIT_FRAME_SIZE);
 
-	jit_node_t *branch_targets[CODE_BLOCK_WORDS];
+	jit_node_t *branch_targets[CODE_BLOCK_WORDS * 2];
 	jit_node_t *latent_delay_slot = nullptr;
 	local_branches.clear();
 
 	// Mark which instructions can be branched to via local goto.
-	bool block_entry[CODE_BLOCK_WORDS];
+	bool block_entry[CODE_BLOCK_WORDS * 2];
 	memset(block_entry, 0, instruction_count * sizeof(bool));
 	jit_mark_block_entries(pc_word, pc_word + instruction_count, block_entry);
 
