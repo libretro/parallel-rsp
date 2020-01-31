@@ -1088,7 +1088,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 
 	case 013: // SLTIU
 	{
-		TWO_REG_IMM_OP(lti_u, sltiu, int16_t);
+		TWO_REG_IMM_OP(lti_u, sltiu, uint16_t);
 		break;
 	}
 
