@@ -869,7 +869,7 @@ Func CPU::jit_region(uint64_t hash, unsigned pc, unsigned count)
 
 				case 006: // CTC2
 					APPEND("RSP_CTC2(STATE, %u, %u);\n", rt, rd);
-					DISASM("mtc2 %u, %u\n", rt, rd);
+					DISASM("ctc2 %u, %u\n", rt, rd);
 					break;
 
 				default:

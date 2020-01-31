@@ -373,6 +373,12 @@ int main(int argc, char *argv[])
 			}
 		}
 
+		if (memcmp(&state.cp2, &reference_state.cp2, sizeof(state.cp2)) != 0)
+		{
+			fprintf(stderr, "CP2 register state mismatch.\n");
+			mismatch = true;
+		}
+
 		if (mismatch)
 			return EXIT_FAILURE;
 	}

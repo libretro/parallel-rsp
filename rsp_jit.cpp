@@ -1214,8 +1214,93 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 	}
 
 	case 022: // COP2
-		DISASM("cop2 %u\n", 0);
+	{
+		unsigned rd = (instr >> 11) & 31;
+		unsigned rs = (instr >> 21) & 31;
+		unsigned rt = (instr >> 16) & 31;
+		unsigned imm = (instr >> 7) & 15;
+
+		switch (rs)
+		{
+		case 000: // MFC2
+		{
+			if (last_info.conditional)
+				jit_save_cond_branch_taken(_jit);
+
+			jit_prepare();
+			jit_pushargr(JIT_REGISTER_STATE);
+			jit_pushargi(rt);
+			jit_pushargi(rd);
+			jit_pushargi(imm);
+			jit_finishi(reinterpret_cast<jit_pointer_t>(RSP_MFC2));
+
+			if (last_info.conditional)
+				jit_restore_cond_branch_taken(_jit);
+
+			DISASM("mfc2 %s, %s, %u\n", NAME(rt), NAME(rd), imm);
+			break;
+		}
+
+		case 002: // CFC2
+		{
+			if (last_info.conditional)
+				jit_save_cond_branch_taken(_jit);
+
+			jit_prepare();
+			jit_pushargr(JIT_REGISTER_STATE);
+			jit_pushargi(rt);
+			jit_pushargi(rd);
+			jit_finishi(reinterpret_cast<jit_pointer_t>(RSP_CFC2));
+
+			if (last_info.conditional)
+				jit_restore_cond_branch_taken(_jit);
+
+			DISASM("cfc2 %s, %s\n", NAME(rt), NAME(rd));
+			break;
+		}
+
+		case 004: // MTC2
+		{
+			if (last_info.conditional)
+				jit_save_cond_branch_taken(_jit);
+
+			jit_prepare();
+			jit_pushargr(JIT_REGISTER_STATE);
+			jit_pushargi(rt);
+			jit_pushargi(rd);
+			jit_pushargi(imm);
+			jit_finishi(reinterpret_cast<jit_pointer_t>(RSP_MTC2));
+
+			if (last_info.conditional)
+				jit_restore_cond_branch_taken(_jit);
+
+			DISASM("mtc2 %s, %s, %u\n", NAME(rt), NAME(rd), imm);
+			break;
+		}
+
+		case 006: // CTC2
+		{
+			if (last_info.conditional)
+				jit_save_cond_branch_taken(_jit);
+
+			jit_prepare();
+			jit_pushargr(JIT_REGISTER_STATE);
+			jit_pushargi(rt);
+			jit_pushargi(rd);
+			jit_finishi(reinterpret_cast<jit_pointer_t>(RSP_CTC2));
+
+			if (last_info.conditional)
+				jit_restore_cond_branch_taken(_jit);
+
+			DISASM("ctc2 %s, %s\n", NAME(rt), NAME(rd));
+			break;
+		}
+
+		default:
+			break;
+		}
 		break;
+	}
 
 	case 040: // LB
 	{
