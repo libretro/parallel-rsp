@@ -217,8 +217,8 @@ extern "C"
 	{
 		auto off0 = BYTE_ENDIAN_FIXUP(addr, 0);
 		auto off1 = BYTE_ENDIAN_FIXUP(addr, 1);
-		return jit_word_t(int16_t((dram[off0] << 0) |
-		                          (dram[off1] << 8)));
+		return jit_word_t(int16_t((dram[off0] << 8) |
+		                          (dram[off1] << 0)));
 	}
 
 	static jit_word_t rsp_unaligned_lw(const uint8_t *dram, jit_word_t addr)
@@ -229,26 +229,26 @@ extern "C"
 		auto off3 = BYTE_ENDIAN_FIXUP(addr, 3);
 
 		// To sign extend, or not to sign extend, hm ...
-		return jit_word_t((int32_t(dram[off0]) << 0) |
-		                  (int32_t(dram[off1]) << 8) |
-		                  (int32_t(dram[off2]) << 16) |
-		                  (int32_t(dram[off3]) << 24));
+		return jit_word_t((int32_t(dram[off0]) << 24) |
+		                  (int32_t(dram[off1]) << 16) |
+		                  (int32_t(dram[off2]) << 8) |
+		                  (int32_t(dram[off3]) << 0));
 	}
 
 	static jit_uword_t rsp_unaligned_lhu(const uint8_t *dram, jit_word_t addr)
 	{
 		auto off0 = BYTE_ENDIAN_FIXUP(addr, 0);
 		auto off1 = BYTE_ENDIAN_FIXUP(addr, 1);
-		return jit_word_t(uint16_t((dram[off0] << 0) |
-		                          (dram[off1] << 8)));
+		return jit_word_t(uint16_t((dram[off0] << 8) |
+		                          (dram[off1] << 0)));
 	}
 
 	static void rsp_unaligned_sh(uint8_t *dram, jit_word_t addr, jit_word_t data)
 	{
 		auto off0 = BYTE_ENDIAN_FIXUP(addr, 0);
 		auto off1 = BYTE_ENDIAN_FIXUP(addr, 1);
-		dram[off0] = data & 0xff;
-		dram[off1] = (data >> 8) & 0xff;
+		dram[off0] = (data >> 8) & 0xff;
+		dram[off1] = (data >> 0) & 0xff;
 	}
 
 	static void rsp_unaligned_sw(uint8_t *dram, jit_word_t addr, jit_word_t data)
@@ -258,10 +258,10 @@ extern "C"
 		auto off2 = BYTE_ENDIAN_FIXUP(addr, 2);
 		auto off3 = BYTE_ENDIAN_FIXUP(addr, 3);
 
-		dram[off0] = data & 0xff;
-		dram[off1] = (data >> 8) & 0xff;
-		dram[off2] = (data >> 16) & 0xff;
-		dram[off3] = (data >> 24) & 0xff;
+		dram[off0] = (data >> 24) & 0xff;
+		dram[off1] = (data >> 16) & 0xff;
+		dram[off2] = (data >> 8) & 0xff;
+		dram[off3] = (data >> 0) & 0xff;
 	}
 }
 
