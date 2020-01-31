@@ -295,11 +295,17 @@ static void validate_trace(RSP::CPU &cpu, const char *path)
 int main(int argc, char *argv[])
 {
 	RSP::JIT::CPU cpu;
+	RSP::CPU reference_cpu;
 	auto &state = cpu.get_state();
+	auto &reference_state = reference_cpu.get_state();
 
 	uint32_t cr[16] = {};
 	for (unsigned i = 0; i < 16; i++)
 		state.cp0.cr[i] = &cr[i];
+
+	uint32_t reference_cr[16] = {};
+	for (unsigned i = 0; i < 16; i++)
+		reference_state.cp0.cr[i] = &reference_cr[i];
 
 	if (argc == 3)
 	{
@@ -310,15 +316,65 @@ int main(int argc, char *argv[])
 
 		dmem.resize(0x1000);
 		imem.resize(0x1000);
+		auto reference_dmem = dmem;
+		auto reference_imem = imem;
+
 		cpu.set_dmem(dmem.data());
 		cpu.set_imem(imem.data());
+		reference_cpu.set_dmem(reference_dmem.data());
+		reference_cpu.set_imem(reference_imem.data());
 
-		for (unsigned i = 0; i < 1; i++)
+		printf("=== Running reference CPU ===\n");
+		reference_cpu.invalidate_imem();
+		reference_cpu.run();
+		fflush(stdout);
+		fflush(stderr);
+
+		printf("=== Running Lightning CPU ===\n");
+		fflush(stdout);
+		fflush(stderr);
+		cpu.invalidate_imem();
+		cpu.run();
+		fflush(stdout);
+		fflush(stderr);
+
+		bool mismatch = false;
+
+		for (unsigned i = 0; i < 32; i++)
 		{
-			cpu.invalidate_imem();
-			cr[RSP::CP0_REGISTER_SP_STATUS] = 0;
-			cpu.run();
+			if (state.sr[i] != reference_state.sr[i])
+			{
+				fprintf(stderr, "SR[%u] mismatch (got 0x%x, reference 0x%x)!\n", i, state.sr[i], reference_state.sr[i]);
+				mismatch = true;
+			}
 		}
+
+		if (state.pc != reference_state.pc)
+		{
+			fprintf(stderr, "PC mismatch (got 0x%x, reference 0x%x)!\n", state.pc, reference_state.pc);
+			mismatch = true;
+		}
+
+		for (unsigned i = 0; i < 16; i++)
+		{
+			if (cr[i] != reference_cr[i])
+			{
+				fprintf(stderr, "COP0 CR [%u] mismatch (got %u, reference %u)!\n", i, cr[i], reference_cr[i]);
+				mismatch = true;
+			}
+		}
+
+		for (unsigned i = 0; i < 0x1000; i++)
+		{
+			if (dmem[i] != reference_dmem[i])
+			{
+				fprintf(stderr, "DMEM[0x%03x] mismatch (got 0x%02x, reference 0x%02x)!\n", i, dmem[i], reference_dmem[i]);
+				mismatch = true;
+			}
+		}
+
+		if (mismatch)
+			return EXIT_FAILURE;
 	}
 #if 0
 	else if (argc == 2)

@@ -16,6 +16,8 @@ CRT_OBJ = start.o rsp-mips.o
 
 all: $(TARGET_BIN) $(TARGET_GLOBAL_BIN)
 
+crt-obj: $(CRT_OBJ)
+
 $(TARGET_BIN): $(TARGET_ELF)
 	$(MIPS_OBJCOPY) -j .text $< $(TARGET_BIN) -O binary
 
@@ -32,7 +34,7 @@ $(TARGET_ELF): $(MIPS_OBJ) $(CRT_OBJ)
 	$(MIPS_CC) -c -o $@ $< -Os -EB -march=mips1 -mabi=eabi -mno-abicalls -std=gnu99 -nostdlib
 
 clean:
-	rm -f $(MIPS_OBJ) $(TARGET_ELF) $(TARGET_HEX) $(TARGET_GLOBAL_HEX) $(TARGET_BIN) $(TARGET_GLOBAL_BIN)
+	rm -f $(MIPS_OBJ) $(CRT_OBJ) $(TARGET_ELF) $(TARGET_HEX) $(TARGET_GLOBAL_HEX) $(TARGET_BIN) $(TARGET_GLOBAL_BIN)
 
-.PHONY: all clean tools clean-tools
+.PHONY: all clean tools
 

@@ -826,8 +826,8 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 
 #define THREE_REG_OP(op, asmop) \
 	NOP_IF_RD_ZERO(); \
-	jit_load_register(_jit, JIT_REGISTER_TMP0, rt); \
-	jit_load_register(_jit, JIT_REGISTER_TMP1, rs); \
+	jit_load_register(_jit, JIT_REGISTER_TMP0, rs); \
+	jit_load_register(_jit, JIT_REGISTER_TMP1, rt); \
 	jit_##op(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1); \
 	jit_store_register(_jit, JIT_REGISTER_TMP0, rd); \
 	DISASM(#asmop " %s, %s, %s\n", NAME(rd), NAME(rt), NAME(rs))
@@ -1419,42 +1419,43 @@ ReturnMode CPU::run()
 
 void CPU::print_registers()
 {
-	fprintf(stderr, "RSP state:\n");
-	fprintf(stderr, "  PC: 0x%03x\n", state.pc);
+#define DUMP_FILE stdout
+	fprintf(DUMP_FILE, "RSP state:\n");
+	fprintf(DUMP_FILE, "  PC: 0x%03x\n", state.pc);
 	for (unsigned i = 1; i < 32; i++)
-		fprintf(stderr, "  SR[%s] = 0x%08x\n", NAME(i), state.sr[i]);
-	fprintf(stderr, "\n");
+		fprintf(DUMP_FILE, "  SR[%s] = 0x%08x\n", NAME(i), state.sr[i]);
+	fprintf(DUMP_FILE, "\n");
 	for (unsigned i = 0; i < 32; i++)
 	{
-		fprintf(stderr, "  VR[%02u] = { 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x }\n", i,
+		fprintf(DUMP_FILE, "  VR[%02u] = { 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x }\n", i,
 		        state.cp2.regs[i].e[0], state.cp2.regs[i].e[1], state.cp2.regs[i].e[2], state.cp2.regs[i].e[3],
 		        state.cp2.regs[i].e[4], state.cp2.regs[i].e[5], state.cp2.regs[i].e[6], state.cp2.regs[i].e[7]);
 	}
 
-	fprintf(stderr, "\n");
+	fprintf(DUMP_FILE, "\n");
 
 	for (unsigned i = 0; i < 3; i++)
 	{
 		static const char *strings[] = { "ACC_HI", "ACC_MD", "ACC_LO" };
-		fprintf(stderr, "  %s = { 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x }\n", strings[i],
+		fprintf(DUMP_FILE, "  %s = { 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x }\n", strings[i],
 		        state.cp2.acc.e[8 * i + 0], state.cp2.acc.e[8 * i + 1], state.cp2.acc.e[8 * i + 2],
 		        state.cp2.acc.e[8 * i + 3], state.cp2.acc.e[8 * i + 4], state.cp2.acc.e[8 * i + 5],
 		        state.cp2.acc.e[8 * i + 6], state.cp2.acc.e[8 * i + 7]);
 	}
 
-	fprintf(stderr, "\n");
+	fprintf(DUMP_FILE, "\n");
 
 	for (unsigned i = 0; i < 3; i++)
 	{
 		static const char *strings[] = { "VCO", "VCC", "VCE" };
 		uint16_t flags = rsp_get_flags(state.cp2.flags[i].e);
-		fprintf(stderr, "  %s = 0x%04x\n", strings[i], flags);
+		fprintf(DUMP_FILE, "  %s = 0x%04x\n", strings[i], flags);
 	}
 
-	fprintf(stderr, "\n");
-	fprintf(stderr, "  Div Out = 0x%04x\n", state.cp2.div_out);
-	fprintf(stderr, "  Div In  = 0x%04x\n", state.cp2.div_in);
-	fprintf(stderr, "  DP flag = 0x%04x\n", state.cp2.dp_flag);
+	fprintf(DUMP_FILE, "\n");
+	fprintf(DUMP_FILE, "  Div Out = 0x%04x\n", state.cp2.div_out);
+	fprintf(DUMP_FILE, "  Div In  = 0x%04x\n", state.cp2.div_in);
+	fprintf(DUMP_FILE, "  DP flag = 0x%04x\n", state.cp2.dp_flag);
 }
 
 } // namespace JIT

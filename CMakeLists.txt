@@ -80,3 +80,29 @@ target_link_libraries(rsp-runner PRIVATE parallel-rsp)
 target_compile_options(rsp-runner PRIVATE ${PARALLEL_RSP_CXX_FLAGS})
 set_target_properties(rsp-runner PROPERTIES LINK_FLAGS "-rdynamic")
 
+option(PARALLEL_RSP_TESTS "Enable unit tests for Lightning CPU." ON)
+
+if (PARALLEL_RSP_TESTS)
+	enable_testing()
+	add_custom_target(rsp-tests ALL)
+
+	add_custom_target(rsp-test-crt
+			COMMAND ${CMAKE_MAKE_PROGRAM} crt-obj -j1
+			WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/debug-toolchain)
+
+	function(rsp_add_test NAME)
+		add_custom_target(rsp-test-binary-${NAME}
+				COMMAND ${CMAKE_MAKE_PROGRAM} RSP_TEST=${NAME} -j1
+				WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/debug-toolchain)
+		add_dependencies(rsp-test-binary-${NAME} rsp-test-crt)
+		add_dependencies(rsp-tests rsp-test-binary-${NAME})
+
+		add_test(NAME rsp-test-${NAME}
+				COMMAND $<TARGET_FILE:rsp-runner>
+				${CMAKE_CURRENT_SOURCE_DIR}/debug-toolchain/${NAME}.global.bin
+				${CMAKE_CURRENT_SOURCE_DIR}/debug-toolchain/${NAME}.bin)
+	endfunction()
+
+	rsp_add_test(add)
+	rsp_add_test(sub)
+endif()

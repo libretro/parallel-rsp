@@ -22,9 +22,9 @@ extern "C"
 	void RSP_DEBUG(RSP::CPUState *rsp, const char *tag, unsigned pc, unsigned value)
 	{
 		uint64_t hash = hash_imem((const uint8_t *)rsp->cp2.regs, sizeof(rsp->cp2.regs));
-		fprintf(stderr, "%s (PC: %u): %u, %llu\n", tag, pc, value, hash);
+		fprintf(DUMP_FILE, "%s (PC: %u): %u, %llu\n", tag, pc, value, hash);
 		if (value)
-			fprintf(stderr, "  DMEM HASH: 0x%016llx\n", hash_imem((const uint8_t *)rsp->dmem, 0x1000));
+			fprintf(DUMP_FILE, "  DMEM HASH: 0x%016llx\n", hash_imem((const uint8_t *)rsp->dmem, 0x1000));
 	}
 #endif
 }
@@ -536,7 +536,7 @@ Func CPU::jit_region(uint64_t hash, unsigned pc, unsigned count)
 			{
 				APPEND("RSP_RESERVED(STATE, %u, %u, %u, %u);\n", vd, vs, vt, e);
 				DISASM("RSP_RESERVED v%u, v%u, v%u[%u]\n", vd, vs, vt, e);
-				//fprintf(stderr, "Unimplemented COP2 op %u.\n", op);
+				//fprintf(DUMP_FILE, "Unimplemented COP2 op %u.\n", op);
 			}
 
 #ifdef INTENSE_DEBUG
@@ -1250,42 +1250,43 @@ DECL_COP2(RESERVED);
 
 void CPU::print_registers()
 {
-	fprintf(stderr, "RSP state:\n");
-	fprintf(stderr, "  PC: 0x%03x\n", state.pc);
+#define DUMP_FILE stdout
+	fprintf(DUMP_FILE, "RSP state:\n");
+	fprintf(DUMP_FILE, "  PC: 0x%03x\n", state.pc);
 	for (unsigned i = 1; i < 32; i++)
-		fprintf(stderr, "  SR[%s] = 0x%08x\n", NAME(i), state.sr[i]);
-	fprintf(stderr, "\n");
+		fprintf(DUMP_FILE, "  SR[%s] = 0x%08x\n", NAME(i), state.sr[i]);
+	fprintf(DUMP_FILE, "\n");
 	for (unsigned i = 0; i < 32; i++)
 	{
-		fprintf(stderr, "  VR[%02u] = { 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x }\n", i,
+		fprintf(DUMP_FILE, "  VR[%02u] = { 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x }\n", i,
 		        state.cp2.regs[i].e[0], state.cp2.regs[i].e[1], state.cp2.regs[i].e[2], state.cp2.regs[i].e[3],
 		        state.cp2.regs[i].e[4], state.cp2.regs[i].e[5], state.cp2.regs[i].e[6], state.cp2.regs[i].e[7]);
 	}
 
-	fprintf(stderr, "\n");
+	fprintf(DUMP_FILE, "\n");
 
 	for (unsigned i = 0; i < 3; i++)
 	{
 		static const char *strings[] = { "ACC_HI", "ACC_MD", "ACC_LO" };
-		fprintf(stderr, "  %s = { 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x }\n", strings[i],
+		fprintf(DUMP_FILE, "  %s = { 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x }\n", strings[i],
 		        state.cp2.acc.e[8 * i + 0], state.cp2.acc.e[8 * i + 1], state.cp2.acc.e[8 * i + 2],
 		        state.cp2.acc.e[8 * i + 3], state.cp2.acc.e[8 * i + 4], state.cp2.acc.e[8 * i + 5],
 		        state.cp2.acc.e[8 * i + 6], state.cp2.acc.e[8 * i + 7]);
 	}
 
-	fprintf(stderr, "\n");
+	fprintf(DUMP_FILE, "\n");
 
 	for (unsigned i = 0; i < 3; i++)
 	{
 		static const char *strings[] = { "VCO", "VCC", "VCE" };
 		uint16_t flags = rsp_get_flags(state.cp2.flags[i].e);
-		fprintf(stderr, "  %s = 0x%04x\n", strings[i], flags);
+		fprintf(DUMP_FILE, "  %s = 0x%04x\n", strings[i], flags);
 	}
 
-	fprintf(stderr, "\n");
-	fprintf(stderr, "  Div Out = 0x%04x\n", state.cp2.div_out);
-	fprintf(stderr, "  Div In  = 0x%04x\n", state.cp2.div_in);
-	fprintf(stderr, "  DP flag = 0x%04x\n", state.cp2.dp_flag);
+	fprintf(DUMP_FILE, "\n");
+	fprintf(DUMP_FILE, "  Div Out = 0x%04x\n", state.cp2.div_out);
+	fprintf(DUMP_FILE, "  Div In  = 0x%04x\n", state.cp2.div_in);
+	fprintf(DUMP_FILE, "  DP flag = 0x%04x\n", state.cp2.dp_flag);
 }
 
 void CPU::exit(ReturnMode mode)
@@ -1358,7 +1359,7 @@ void CPU::enter(uint32_t pc)
 		else
 		{
 			//static unsigned count;
-			//fprintf(stderr, "JIT region #%u\n", ++count);
+			//fprintf(DUMP_FILE, "JIT region #%u\n", ++count);
 			block = jit_region(hash, word_pc, end - word_pc);
 			//fprintf(stdout, "jit compile");
 		}
