@@ -1383,12 +1383,94 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 	}
 
 	case 062: // LWC2
-		DISASM("lcw2 %u\n", 0);
+	{
+		unsigned rt = (instr >> 16) & 31;
+		int16_t simm = instr;
+		// Sign-extend.
+		simm <<= 9;
+		simm >>= 9;
+		unsigned rs = (instr >> 21) & 31;
+		unsigned rd = (instr >> 11) & 31;
+		unsigned imm = (instr >> 7) & 15;
+
+		static const char *lwc2_ops[32] = {
+			"LBV",   "LSV",   "LLV",   "LDV",   "LQV",   "LRV",   "LPV",   "LUV",   "LHV",   nullptr, nullptr,
+			"LTV",   nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+			nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+		};
+
+		using LWC2Op = void (*)(RSP::CPUState *, unsigned rt, unsigned imm, int simm, unsigned rs);
+		static const LWC2Op ops[32] = {
+			RSP_LBV, RSP_LSV, RSP_LLV, RSP_LDV, RSP_LQV, RSP_LRV, RSP_LPV, RSP_LUV, RSP_LHV, nullptr, nullptr,
+			RSP_LTV,
+		};
+
+		const char *op = lwc2_ops[rd];
+		if (op)
+		{
+			if (last_info.conditional)
+				jit_save_cond_branch_taken(_jit);
+			jit_prepare();
+			jit_pushargr(JIT_REGISTER_STATE);
+			jit_pushargi(rt);
+			jit_pushargi(imm);
+			jit_pushargi(simm);
+			jit_pushargi(rs);
+			jit_finishi(reinterpret_cast<jit_pointer_t>(ops[rd]));
+			if (last_info.conditional)
+				jit_restore_cond_branch_taken(_jit);
+			DISASM("%s %s, %u, %d(%s)\n", op, NAME(rt), imm, simm, NAME(rs));
+		}
+		else
+			DISASM_NOP();
+
 		break;
+	}
 
 	case 072: // SWC2
-		DISASM("swc2 %u\n", 0);
+	{
+		unsigned rt = (instr >> 16) & 31;
+		int16_t simm = instr;
+		// Sign-extend.
+		simm <<= 9;
+		simm >>= 9;
+		unsigned rs = (instr >> 21) & 31;
+		unsigned rd = (instr >> 11) & 31;
+		unsigned imm = (instr >> 7) & 15;
+
+		static const char *swc2_ops[32] = {
+			"SBV",   "SSV",   "SLV",   "SDV",   "SQV",   "SRV",   "SPV",   "SUV",   "SHV",   "SFV", nullptr,
+			"STV",   nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+			nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+		};
+
+		using SWC2Op = void (*)(RSP::CPUState *, unsigned rt, unsigned imm, int simm, unsigned rs);
+		static const SWC2Op ops[32] = {
+			RSP_SBV, RSP_SSV, RSP_SLV, RSP_SDV, RSP_SQV, RSP_SRV, RSP_SPV, RSP_SUV, RSP_SHV, RSP_SFV, nullptr,
+			RSP_STV,
+		};
+
+		const char *op = swc2_ops[rd];
+		if (op)
+		{
+			if (last_info.conditional)
+				jit_save_cond_branch_taken(_jit);
+			jit_prepare();
+			jit_pushargr(JIT_REGISTER_STATE);
+			jit_pushargi(rt);
+			jit_pushargi(imm);
+			jit_pushargi(simm);
+			jit_pushargi(rs);
+			jit_finishi(reinterpret_cast<jit_pointer_t>(ops[rd]));
+			if (last_info.conditional)
+				jit_restore_cond_branch_taken(_jit);
+			DISASM("%s %s, %u, %d(%s)\n", op, NAME(rt), imm, simm, NAME(rs));
+		}
+		else
+			DISASM_NOP();
+
 		break;
+	}
 
 	default:
 		break;
