@@ -1314,8 +1314,9 @@ void CPU::jit_handle_latent_delay_slot(jit_state_t *_jit, const InstructionInfo 
 	if (last_info.branch)
 	{
 		// Well then ... two branches in a row just happened. Try to do something sensible.
-		if (last_info.conditional)
-			jit_stxi_i(offsetof(CPUState, has_delay_slot), JIT_REGISTER_STATE, JIT_REGISTER_COND_BRANCH_TAKEN);
+		if (!last_info.conditional)
+			jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 1);
+		jit_stxi_i(offsetof(CPUState, has_delay_slot), JIT_REGISTER_STATE, JIT_REGISTER_COND_BRANCH_TAKEN);
 
 		jit_ldxi_i(JIT_REGISTER_NEXT_PC, JIT_REGISTER_STATE, offsetof(CPUState, branch_target));
 
