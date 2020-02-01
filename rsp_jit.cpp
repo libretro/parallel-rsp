@@ -588,6 +588,14 @@ void CPU::jit_load_register(jit_state_t *_jit, unsigned jit_register, unsigned m
 		jit_ldxi_i(jit_register, JIT_REGISTER_STATE, offsetof(CPUState, sr) + 4 * mips_register);
 }
 
+void CPU::jit_load_register_zext(jit_state_t *_jit, unsigned jit_register, unsigned mips_register)
+{
+	if (mips_register == 0)
+		jit_movi(jit_register, 0);
+	else
+		jit_ldxi_ui(jit_register, JIT_REGISTER_STATE, offsetof(CPUState, sr) + 4 * mips_register);
+}
+
 void CPU::jit_store_register(jit_state_t *_jit, unsigned jit_register, unsigned mips_register)
 {
 	assert(mips_register != 0);
@@ -820,7 +828,10 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 
 		case 002: // SRL
 		{
-			FIXED_SHIFT_OP(rshi_u, srl);
+			NOP_IF_RD_ZERO();
+			jit_load_register_zext(_jit, JIT_REGISTER_TMP0, rt);
+			jit_rshi_u(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, shift);
+			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
 			break;
 		}
 
@@ -846,7 +857,12 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 
 		case 006: // SRLV
 		{
-			VARIABLE_SHIFT_OP(rshr_u, srlv);
+			NOP_IF_RD_ZERO();
+			jit_load_register_zext(_jit, JIT_REGISTER_TMP0, rt);
+			jit_load_register(_jit, JIT_REGISTER_TMP1, rs);
+			jit_andi(JIT_REGISTER_TMP1, JIT_REGISTER_TMP1, 31);
+			jit_rshi_u(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1);
+			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
 			break;
 		}
 

@@ -105,6 +105,7 @@ private:
 	void jit_exit_dynamic(jit_state_t *_jit, uint32_t pc, const InstructionInfo &last_info, bool first_instruction);
 	void jit_end_of_block(jit_state_t *_jit, uint32_t pc, const InstructionInfo &last_info);
 	static void jit_load_register(jit_state_t *_jit, unsigned jit_register, unsigned mips_register);
+	static void jit_load_register_zext(jit_state_t *_jit, unsigned jit_register, unsigned mips_register);
 	static void jit_store_register(jit_state_t *_jit, unsigned jit_register, unsigned mips_register);
 	void jit_handle_delay_slot(jit_state_t *_jit, const InstructionInfo &last_info, uint32_t base_pc, uint32_t end_pc);
 	void jit_handle_impossible_delay_slot(jit_state_t *_jit, const InstructionInfo &info, const InstructionInfo &last_info,
