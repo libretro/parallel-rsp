@@ -5,7 +5,7 @@
 
 using namespace std;
 
-#define TRACE
+//#define TRACE
 //#define TRACE_ENTER
 
 // We're only guaranteed 3 V registers (x86).
