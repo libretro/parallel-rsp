@@ -931,7 +931,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_save_indirect_register(_jit, rs);
 
 			// If someone can branch to the delay slot, we have to turn this into a conditional branch.
-			if (next_instruction_is_branch_target || true)
+			if (next_instruction_is_branch_target)
 			{
 				info.conditional = true;
 				jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 1);
@@ -953,7 +953,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			info.branch = true;
 			info.indirect = true;
 			// If someone can branch to the delay slot, we have to turn this into a conditional branch.
-			if (next_instruction_is_branch_target || true)
+			if (next_instruction_is_branch_target)
 			{
 				info.conditional = true;
 				jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 1);
