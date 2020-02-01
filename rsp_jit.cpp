@@ -420,11 +420,11 @@ Func CPU::get_jit_block(uint32_t pc)
 		end = analyze_static_end(word_pc, end);
 
 		uint64_t hash = hash_imem(word_pc, end - word_pc);
-		auto itr = cached_blocks[word_pc].find(hash);
-		if (itr != cached_blocks[word_pc].end())
-			block = itr->second;
+		auto &ptr = cached_blocks[word_pc][hash];
+		if (ptr)
+			block = ptr;
 		else
-			block = jit_region(hash, word_pc, end - word_pc);
+			block = ptr = jit_region(hash, word_pc, end - word_pc);
 	}
 	return block;
 }
