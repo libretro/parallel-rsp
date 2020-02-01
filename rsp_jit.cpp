@@ -506,7 +506,9 @@ void CPU::jit_handle_impossible_delay_slot(jit_state_t *_jit, const InstructionI
 		jit_movi(JIT_REGISTER_NEXT_PC, last_info.branch_target);
 
 	jit_patch_abs(jit_jmpi(), thunks.enter_thunk);
-	jit_patch(nobranch);
+
+	if (nobranch)
+		jit_patch(nobranch);
 }
 
 void CPU::jit_handle_delay_slot(jit_state_t *_jit, const InstructionInfo &last_info,
