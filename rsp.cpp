@@ -499,7 +499,9 @@ Func CPU::jit_region(uint64_t hash, unsigned pc, unsigned count)
 	{
 		uint32_t instr = state.imem[pc + i];
 		APPEND("pc_%03x:\n", (pc + i) * 4);
+#if 0
 		APPEND("RSP_REPORT_PC(STATE, %u, %u);\n", (pc + i) * 4, instr);
+#endif
 		PIPELINE_BRANCH();
 
 		uint32_t type = instr >> 26;

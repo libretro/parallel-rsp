@@ -259,6 +259,7 @@ extern "C"
 		dram[off3] = (data >> 0) & 0xff;
 	}
 
+#if 0
 	static void rsp_report_pc(const CPUState *state, jit_uword_t pc, jit_uword_t instr)
 	{
 		auto disasm = disassemble(pc, instr);
@@ -274,6 +275,7 @@ extern "C"
 		}
 		printf("\n");
 	}
+#endif
 }
 
 void CPU::jit_save_indirect_register(jit_state_t *_jit, unsigned mips_register)
@@ -747,6 +749,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
                           InstructionInfo &info, const InstructionInfo &last_info,
                           bool first_instruction, bool next_instruction_is_branch_target)
 {
+#if 0
 	if (last_info.conditional)
 		jit_save_cond_branch_taken(_jit);
 	jit_prepare();
@@ -756,6 +759,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 	jit_finishi(reinterpret_cast<jit_pointer_t>(rsp_report_pc));
 	if (last_info.conditional)
 		jit_restore_cond_branch_taken(_jit);
+#endif
 
 	// VU
 	if ((instr >> 25) == 0x25)
