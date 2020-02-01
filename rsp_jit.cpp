@@ -159,6 +159,9 @@ unsigned CPU::analyze_static_end(unsigned pc, unsigned end)
 
 		case 002: // J
 		case 003: // JAL
+			// Where we choose to end the block here is critical for performance, since otherwise
+			// we end up hashing a lot of garbage as it turns out ...
+
 			// J is resolved by goto. Same with JAL if call target happens to be inside the block.
 			target = instr & 0x3ff;
 			if (target >= pc && target < end) // goto
@@ -166,7 +169,7 @@ unsigned CPU::analyze_static_end(unsigned pc, unsigned end)
 				// J is a static jump, so if we aren't branching
 				// past this instruction and we're branching backwards,
 				// we can end the block here.
-				if (!forward_goto && target < end)
+				if (!forward_goto)
 				{
 					max_static_pc = max(pc + i + 2, max_static_pc);
 					goto end;
