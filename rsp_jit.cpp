@@ -680,8 +680,7 @@ void CPU::jit_emit_store_operation(jit_state_t *_jit,
 	if (align_mask)
 	{
 		// We're going to call, so need to save caller-save register we care about.
-		if (last_info.conditional)
-			jit_save_cond_branch_taken(_jit);
+		jit_save_cond_branch_taken(_jit);
 
 		jit_prepare();
 		jit_pushargr(JIT_REGISTER_DMEM);
@@ -690,8 +689,7 @@ void CPU::jit_emit_store_operation(jit_state_t *_jit,
 		jit_finishi(rsp_unaligned_op);
 
 		// Restore branch state.
-		if (last_info.conditional)
-			jit_restore_cond_branch_taken(_jit);
+		jit_restore_cond_branch_taken(_jit);
 	}
 
 	if (align_mask)
@@ -742,8 +740,7 @@ void CPU::jit_emit_load_operation(jit_state_t *_jit,
 	if (align_mask)
 	{
 		// We're going to call, so need to save caller-save register we care about.
-		if (last_info.conditional)
-			jit_save_cond_branch_taken(_jit);
+		jit_save_cond_branch_taken(_jit);
 
 		jit_prepare();
 		jit_pushargr(JIT_REGISTER_DMEM);
@@ -753,8 +750,7 @@ void CPU::jit_emit_load_operation(jit_state_t *_jit,
 		jit_store_register(_jit, JIT_REGISTER_TMP0, rt);
 
 		// Restore branch state.
-		if (last_info.conditional)
-			jit_restore_cond_branch_taken(_jit);
+		jit_restore_cond_branch_taken(_jit);
 	}
 
 	if (align_mask)
@@ -766,15 +762,13 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
                           bool first_instruction, bool next_instruction_is_branch_target)
 {
 #if 0
-	if (last_info.conditional)
-		jit_save_cond_branch_taken(_jit);
+	jit_save_cond_branch_taken(_jit);
 	jit_prepare();
 	jit_pushargr(JIT_REGISTER_STATE);
 	jit_pushargi(pc);
 	jit_pushargi(instr);
 	jit_finishi(reinterpret_cast<jit_pointer_t>(rsp_report_pc));
-	if (last_info.conditional)
-		jit_restore_cond_branch_taken(_jit);
+	jit_restore_cond_branch_taken(_jit);
 #endif
 
 	// VU
@@ -818,8 +812,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			vuop = RSP_RESERVED;
 		}
 
-		if (last_info.conditional)
-			jit_save_cond_branch_taken(_jit);
+		jit_save_cond_branch_taken(_jit);
 
 		jit_prepare();
 		jit_pushargr(JIT_REGISTER_STATE);
@@ -829,9 +822,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		jit_pushargi(e);
 		jit_finishi(reinterpret_cast<jit_pointer_t>(vuop));
 
-		if (last_info.conditional)
-			jit_restore_cond_branch_taken(_jit);
-
+		jit_restore_cond_branch_taken(_jit);
 		return;
 	}
 
@@ -1263,8 +1254,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		{
 		case 000: // MFC0
 		{
-			if (last_info.conditional)
-				jit_save_cond_branch_taken(_jit);
+			jit_save_cond_branch_taken(_jit);
 
 			jit_prepare();
 			jit_pushargr(JIT_REGISTER_STATE);
@@ -1273,8 +1263,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_finishi(reinterpret_cast<jit_pointer_t>(RSP_MFC0));
 			jit_retval(JIT_REGISTER_MODE);
 
-			if (last_info.conditional)
-				jit_restore_cond_branch_taken(_jit);
+			jit_restore_cond_branch_taken(_jit);
 
 			jit_node_t *noexit = jit_beqi(JIT_REGISTER_MODE, MODE_CONTINUE);
 			jit_exit_dynamic(_jit, pc, last_info, first_instruction);
@@ -1285,8 +1274,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 
 		case 004: // MTC0
 		{
-			if (last_info.conditional)
-				jit_save_cond_branch_taken(_jit);
+			jit_save_cond_branch_taken(_jit);
 
 			jit_prepare();
 			jit_pushargr(JIT_REGISTER_STATE);
@@ -1295,8 +1283,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_finishi(reinterpret_cast<jit_pointer_t>(RSP_MTC0));
 			jit_retval(JIT_REGISTER_MODE);
 
-			if (last_info.conditional)
-				jit_restore_cond_branch_taken(_jit);
+			jit_restore_cond_branch_taken(_jit);
 
 			jit_node_t *noexit = jit_beqi(JIT_REGISTER_MODE, MODE_CONTINUE);
 			jit_exit_dynamic(_jit, pc, last_info, first_instruction);
@@ -1322,8 +1309,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		{
 		case 000: // MFC2
 		{
-			if (last_info.conditional)
-				jit_save_cond_branch_taken(_jit);
+			jit_save_cond_branch_taken(_jit);
 
 			jit_prepare();
 			jit_pushargr(JIT_REGISTER_STATE);
@@ -1332,16 +1318,14 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_pushargi(imm);
 			jit_finishi(reinterpret_cast<jit_pointer_t>(RSP_MFC2));
 
-			if (last_info.conditional)
-				jit_restore_cond_branch_taken(_jit);
+			jit_restore_cond_branch_taken(_jit);
 
 			break;
 		}
 
 		case 002: // CFC2
 		{
-			if (last_info.conditional)
-				jit_save_cond_branch_taken(_jit);
+			jit_save_cond_branch_taken(_jit);
 
 			jit_prepare();
 			jit_pushargr(JIT_REGISTER_STATE);
@@ -1349,16 +1333,14 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_pushargi(rd);
 			jit_finishi(reinterpret_cast<jit_pointer_t>(RSP_CFC2));
 
-			if (last_info.conditional)
-				jit_restore_cond_branch_taken(_jit);
+			jit_restore_cond_branch_taken(_jit);
 
 			break;
 		}
 
 		case 004: // MTC2
 		{
-			if (last_info.conditional)
-				jit_save_cond_branch_taken(_jit);
+			jit_save_cond_branch_taken(_jit);
 
 			jit_prepare();
 			jit_pushargr(JIT_REGISTER_STATE);
@@ -1367,16 +1349,13 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_pushargi(imm);
 			jit_finishi(reinterpret_cast<jit_pointer_t>(RSP_MTC2));
 
-			if (last_info.conditional)
-				jit_restore_cond_branch_taken(_jit);
-
+			jit_restore_cond_branch_taken(_jit);
 			break;
 		}
 
 		case 006: // CTC2
 		{
-			if (last_info.conditional)
-				jit_save_cond_branch_taken(_jit);
+			jit_save_cond_branch_taken(_jit);
 
 			jit_prepare();
 			jit_pushargr(JIT_REGISTER_STATE);
@@ -1384,9 +1363,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_pushargi(rd);
 			jit_finishi(reinterpret_cast<jit_pointer_t>(RSP_CTC2));
 
-			if (last_info.conditional)
-				jit_restore_cond_branch_taken(_jit);
-
+			jit_restore_cond_branch_taken(_jit);
 			break;
 		}
 
@@ -1499,8 +1476,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		const char *op = lwc2_ops[rd];
 		if (op)
 		{
-			if (last_info.conditional)
-				jit_save_cond_branch_taken(_jit);
+			jit_save_cond_branch_taken(_jit);
 			jit_prepare();
 			jit_pushargr(JIT_REGISTER_STATE);
 			jit_pushargi(rt);
@@ -1508,8 +1484,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_pushargi(simm);
 			jit_pushargi(rs);
 			jit_finishi(reinterpret_cast<jit_pointer_t>(ops[rd]));
-			if (last_info.conditional)
-				jit_restore_cond_branch_taken(_jit);
+			jit_restore_cond_branch_taken(_jit);
 		}
 
 		break;
@@ -1538,8 +1513,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		const char *op = swc2_ops[rd];
 		if (op)
 		{
-			if (last_info.conditional)
-				jit_save_cond_branch_taken(_jit);
+			jit_save_cond_branch_taken(_jit);
 			jit_prepare();
 			jit_pushargr(JIT_REGISTER_STATE);
 			jit_pushargi(rt);
@@ -1547,8 +1521,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_pushargi(simm);
 			jit_pushargi(rs);
 			jit_finishi(reinterpret_cast<jit_pointer_t>(ops[rd]));
-			if (last_info.conditional)
-				jit_restore_cond_branch_taken(_jit);
+			jit_restore_cond_branch_taken(_jit);
 		}
 
 		break;
