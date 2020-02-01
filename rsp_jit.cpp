@@ -275,6 +275,11 @@ extern "C"
 		}
 		printf("\n");
 	}
+
+	static void rsp_report_enter(jit_uword_t pc)
+	{
+		printf(" ... Enter 0x%03x ...", unsigned(pc));
+	}
 #endif
 }
 
@@ -350,6 +355,17 @@ void CPU::init_jit_thunks()
 
 	// When thunks need non-local goto, they jump here.
 	auto *entry_label = jit_indirect();
+
+#if 0
+	{
+		// Save PC.
+		jit_stxi_i(offsetof(CPUState, pc), JIT_REGISTER_STATE, JIT_REGISTER_NEXT_PC);
+		jit_prepare();
+		jit_pushargr(JIT_REGISTER_NEXT_PC);
+		jit_finishi(reinterpret_cast<jit_pointer_t>(rsp_report_enter));
+		jit_ldxi_i(JIT_REGISTER_NEXT_PC, JIT_REGISTER_STATE, offsetof(CPUState, pc));
+	}
+#endif
 
 	jit_prepare();
 	jit_pushargr(JIT_REGISTER_SELF);
@@ -1644,6 +1660,8 @@ Func CPU::jit_region(uint64_t hash, unsigned pc_word, unsigned instruction_count
 	jit_node_t *latent_delay_slot = nullptr;
 	local_branches.clear();
 
+	assert(instruction_count <= (CODE_BLOCK_WORDS * 2));
+
 	// Mark which instructions can be branched to via local goto.
 	bool block_entry[CODE_BLOCK_WORDS * 2];
 	memset(block_entry, 0, instruction_count * sizeof(bool));
@@ -1657,6 +1675,11 @@ Func CPU::jit_region(uint64_t hash, unsigned pc_word, unsigned instruction_count
 			branch_targets[i] = jit_label();
 
 		uint32_t instr = state.imem[pc_word + i];
+
+#if 0
+		mips_disasm += disassemble((pc_word + i) << 2, instr) + "\n";
+#endif
+
 		InstructionInfo inst_info = {};
 		jit_instruction(_jit, (pc_word + i) << 2, instr, inst_info, last_info, i == 0,
 		                i + 1 < instruction_count && branch_targets[i + 1]);
@@ -1669,7 +1692,7 @@ Func CPU::jit_region(uint64_t hash, unsigned pc_word, unsigned instruction_count
 			// After the first instruction, we might need to resolve a latent delay slot.
 			latent_delay_slot = jit_forward();
 			jit_ldxi_i(JIT_REGISTER_TMP0, JIT_REGISTER_STATE, offsetof(CPUState, has_delay_slot));
-			jit_patch_at(jit_bnei(JIT_REGISTER_TMP0, 0), latent_delay_slot);
+			latent_delay_slot = jit_bnei(JIT_REGISTER_TMP0, 0);
 			first_info = inst_info;
 		}
 		else if (inst_info.branch && last_info.branch)
@@ -1693,7 +1716,7 @@ Func CPU::jit_region(uint64_t hash, unsigned pc_word, unsigned instruction_count
 	// If we had a latent delay slot, we handle it here.
 	if (latent_delay_slot)
 	{
-		jit_link(latent_delay_slot);
+		jit_patch(latent_delay_slot);
 		jit_handle_latent_delay_slot(_jit, first_info);
 	}
 
