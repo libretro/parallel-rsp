@@ -887,7 +887,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_load_register_zext(_jit, JIT_REGISTER_TMP0, rt);
 			jit_load_register(_jit, JIT_REGISTER_TMP1, rs);
 			jit_andi(JIT_REGISTER_TMP1, JIT_REGISTER_TMP1, 31);
-			jit_rshi_u(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1);
+			jit_rshr_u(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1);
 			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
 			break;
 		}
