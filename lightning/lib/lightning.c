@@ -2094,12 +2094,21 @@ _jit_emit(jit_state_t *_jit)
     if (_jit->user_data)
 	jit_free((jit_pointer_t *)&_jitc->data.ptr);
     else {
+#ifdef _WIN32
+	result = _mprotect(_jit->data.ptr, _jit->data.length, PROT_READ);
+#else
 	result = mprotect(_jit->data.ptr, _jit->data.length, PROT_READ);
+#endif
 	assert(result == 0);
     }
     if (!_jit->user_code) {
+#ifdef _WIN32
+	result = _mprotect(_jit->code.ptr, _jit->code.length,
+			  PROT_READ | PROT_EXEC);
+#else
 	result = mprotect(_jit->code.ptr, _jit->code.length,
 			  PROT_READ | PROT_EXEC);
+#endif
 	assert(result == 0);
     }
 
