@@ -165,7 +165,7 @@ unsigned CPU::analyze_static_end(unsigned pc, unsigned end)
 				// we can end the block here.
 				if (!forward_goto && target < end)
 				{
-					max_static_pc = max(pc + i + 2, max_static_pc);
+					max_static_pc = max(target + 1, max_static_pc);
 					goto end;
 				}
 				else
@@ -175,7 +175,7 @@ unsigned CPU::analyze_static_end(unsigned pc, unsigned end)
 			{
 				// If we have static branch outside our block,
 				// we terminate the block.
-				max_static_pc = max(pc + i + 2, max_static_pc);
+				max_static_pc = max(target + 1, max_static_pc);
 				goto end;
 			}
 			break;
