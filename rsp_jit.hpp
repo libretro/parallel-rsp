@@ -129,6 +129,10 @@ private:
 	static void jit_restore_illegal_cond_branch_taken(jit_state_t *_jit, unsigned reg);
 	static void jit_clear_illegal_cond_branch_taken(jit_state_t *_jit, unsigned tmp_reg);
 	static void jit_clear_cond_branch_taken(jit_state_t *_jit);
+	static void jit_save_indirect_register(jit_state_t *_jit, unsigned mips_register);
+	static void jit_load_indirect_register(jit_state_t *_jit, unsigned jit_reg);
+	static void jit_save_illegal_indirect_register(jit_state_t *_jit);
+	static void jit_load_illegal_indirect_register(jit_state_t *_jit, unsigned jit_reg);
 
 	std::string mips_disasm;
 	struct Link

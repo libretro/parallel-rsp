@@ -276,6 +276,28 @@ extern "C"
 	}
 }
 
+void CPU::jit_save_indirect_register(jit_state_t *_jit, unsigned mips_register)
+{
+	jit_load_register(_jit, JIT_REGISTER_COND_BRANCH_TAKEN, mips_register);
+	jit_stxi(-JIT_FRAME_SIZE + 2 * sizeof(jit_word_t), JIT_FP, JIT_REGISTER_COND_BRANCH_TAKEN);
+}
+
+void CPU::jit_save_illegal_indirect_register(jit_state_t *_jit)
+{
+	jit_load_indirect_register(_jit, JIT_REGISTER_COND_BRANCH_TAKEN);
+	jit_stxi(-JIT_FRAME_SIZE + 3 * sizeof(jit_word_t), JIT_FP, JIT_REGISTER_COND_BRANCH_TAKEN);
+}
+
+void CPU::jit_load_indirect_register(jit_state_t *_jit, unsigned jit_reg)
+{
+	jit_ldxi(jit_reg, JIT_FP, -JIT_FRAME_SIZE + 2 * sizeof(jit_word_t));
+}
+
+void CPU::jit_load_illegal_indirect_register(jit_state_t *_jit, unsigned jit_reg)
+{
+	jit_ldxi(jit_reg, JIT_FP, -JIT_FRAME_SIZE + 3 * sizeof(jit_word_t));
+}
+
 void CPU::jit_save_cond_branch_taken(jit_state_t *_jit)
 {
 	jit_stxi(-JIT_FRAME_SIZE, JIT_FP, JIT_REGISTER_COND_BRANCH_TAKEN);
@@ -402,7 +424,7 @@ void CPU::jit_end_of_block(jit_state_t *_jit, uint32_t pc, const CPU::Instructio
 			forward = jit_beqi(JIT_REGISTER_COND_BRANCH_TAKEN, 0);
 
 		if (last_info.indirect)
-			jit_load_register(_jit, JIT_REGISTER_TMP0, last_info.branch_target);
+			jit_load_indirect_register(_jit, JIT_REGISTER_TMP0);
 		else
 			jit_movi(JIT_REGISTER_TMP0, last_info.branch_target);
 		jit_stxi_i(offsetof(CPUState, branch_target), JIT_REGISTER_STATE, JIT_REGISTER_TMP0);
@@ -449,14 +471,14 @@ void CPU::jit_handle_impossible_delay_slot(jit_state_t *_jit, const InstructionI
 	jit_stxi_i(offsetof(CPUState, has_delay_slot), JIT_REGISTER_STATE, JIT_REGISTER_COND_BRANCH_TAKEN);
 
 	if (info.indirect)
-		jit_load_register(_jit, JIT_REGISTER_TMP0, info.branch_target);
+		jit_load_indirect_register(_jit, JIT_REGISTER_TMP0);
 	else
 		jit_movi(JIT_REGISTER_TMP0, info.branch_target);
 	jit_stxi_i(offsetof(CPUState, branch_target), JIT_REGISTER_STATE, JIT_REGISTER_TMP0);
 
 	// Here we *will* take the branch.
 	if (last_info.indirect)
-		jit_load_register(_jit, JIT_REGISTER_NEXT_PC, last_info.branch_target);
+		jit_load_illegal_indirect_register(_jit, JIT_REGISTER_NEXT_PC);
 	else
 		jit_movi(JIT_REGISTER_NEXT_PC, last_info.branch_target);
 
@@ -484,7 +506,7 @@ void CPU::jit_handle_delay_slot(jit_state_t *_jit, const InstructionInfo &last_i
 			jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 0);
 			auto *no_branch = jit_beqi(JIT_REGISTER_TMP0, 0);
 			if (last_info.indirect)
-				jit_load_register(_jit, JIT_REGISTER_NEXT_PC, last_info.branch_target);
+				jit_load_indirect_register(_jit, JIT_REGISTER_NEXT_PC);
 			else
 				jit_movi(JIT_REGISTER_NEXT_PC, last_info.branch_target);
 			jit_patch_abs(jit_jmpi(), thunks.enter_thunk);
@@ -503,7 +525,7 @@ void CPU::jit_handle_delay_slot(jit_state_t *_jit, const InstructionInfo &last_i
 		else
 		{
 			if (last_info.indirect)
-				jit_load_register(_jit, JIT_REGISTER_NEXT_PC, last_info.branch_target);
+				jit_load_indirect_register(_jit, JIT_REGISTER_NEXT_PC);
 			else
 				jit_movi(JIT_REGISTER_NEXT_PC, last_info.branch_target);
 			jit_patch_abs(jit_jmpi(), thunks.enter_thunk);
@@ -554,13 +576,13 @@ void CPU::jit_exit_dynamic(jit_state_t *_jit, uint32_t pc, const InstructionInfo
 	else if (!last_info.conditional)
 	{
 		// We have an indirect branch, load that register into PC.
-		jit_load_register(_jit, JIT_REGISTER_NEXT_PC, last_info.branch_target);
+		jit_load_indirect_register(_jit, JIT_REGISTER_NEXT_PC);
 	}
 	else if (last_info.indirect)
 	{
 		// Indirect conditional branch.
 		auto *node = jit_beqi(JIT_REGISTER_COND_BRANCH_TAKEN, 0);
-		jit_load_register(_jit, JIT_REGISTER_NEXT_PC, last_info.branch_target);
+		jit_load_indirect_register(_jit, JIT_REGISTER_NEXT_PC);
 		auto *to_end = jit_jmpi();
 		jit_patch(node);
 		jit_movi(JIT_REGISTER_NEXT_PC, (pc + 4) & 0xffcu);
@@ -877,6 +899,8 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 #define FLUSH_IMPOSSIBLE_DELAY_SLOT() do { \
 	if (last_info.branch && last_info.conditional) \
 		jit_save_illegal_cond_branch_taken(_jit); \
+	if (last_info.branch && last_info.indirect) \
+		jit_save_illegal_indirect_register(_jit); \
 	} while(0)
 
 		case 010: // JR
@@ -884,7 +908,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			FLUSH_IMPOSSIBLE_DELAY_SLOT();
 			info.branch = true;
 			info.indirect = true;
-			info.branch_target = rs;
+			jit_save_indirect_register(_jit, rs);
 
 			// If someone can branch to the delay slot, we have to turn this into a conditional branch.
 			if (next_instruction_is_branch_target)
@@ -892,12 +916,15 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 				info.conditional = true;
 				jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 1);
 			}
+			else
+				jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 0);
 			break;
 		}
 
 		case 011: // JALR
 		{
 			FLUSH_IMPOSSIBLE_DELAY_SLOT();
+			jit_save_indirect_register(_jit, rs);
 			if (rd != 0)
 			{
 				jit_movi(JIT_REGISTER_TMP0, (pc + 8) & 0xffcu);
@@ -905,13 +932,14 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			}
 			info.branch = true;
 			info.indirect = true;
-			info.branch_target = rs;
 			// If someone can branch to the delay slot, we have to turn this into a conditional branch.
 			if (next_instruction_is_branch_target)
 			{
 				info.conditional = true;
 				jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 1);
 			}
+			else
+				jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 0);
 			break;
 		}
 
@@ -1584,7 +1612,7 @@ void CPU::jit_handle_latent_delay_slot(jit_state_t *_jit, const InstructionInfo 
 		jit_ldxi_i(JIT_REGISTER_NEXT_PC, JIT_REGISTER_STATE, offsetof(CPUState, branch_target));
 
 		if (last_info.indirect)
-			jit_load_register(_jit, JIT_REGISTER_TMP1, last_info.branch_target);
+			jit_load_indirect_register(_jit, JIT_REGISTER_TMP1);
 		else
 			jit_movi(JIT_REGISTER_TMP1, last_info.branch_target);
 
