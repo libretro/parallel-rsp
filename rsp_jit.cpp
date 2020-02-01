@@ -1121,6 +1121,8 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			info.conditional = true;
 			jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 1);
 		}
+		else
+			jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 0);
 		break;
 	}
 
@@ -1135,6 +1137,8 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			info.conditional = true;
 			jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 1);
 		}
+		else
+			jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 0);
 		break;
 	}
 
@@ -1655,12 +1659,25 @@ Func CPU::jit_region(uint64_t hash, unsigned pc_word, unsigned instruction_count
 		uint32_t instr = state.imem[pc_word + i];
 
 #ifdef TRACE
-		mips_disasm += disassemble((pc_word + i) << 2, instr) + "\n";
+		mips_disasm += disassemble((pc_word + i) << 2, instr);
+		if (last_info.branch)
+		{
+			mips_disasm += "  [branch]";
+			if (last_info.conditional)
+				mips_disasm += "  [cond]";
+			if (last_info.indirect)
+				mips_disasm += "  [indirect]";
+			if (last_info.handles_delay_slot)
+				mips_disasm += "  [handles delay slot]";
+		}
+		if (block_entry[i])
+			mips_disasm += "  [block entry]";
+		mips_disasm += "\n";
 #endif
 
 		InstructionInfo inst_info = {};
 		jit_instruction(_jit, (pc_word + i) << 2, instr, inst_info, last_info, i == 0,
-		                i + 1 < instruction_count && branch_targets[i + 1]);
+		                (i + 1 < instruction_count) && block_entry[i + 1]);
 
 		// Handle all the fun cases with branch delay slots.
 		// Not sure if we really need to handle them, but IIRC CXD4 does it and the LLVM RSP as well.
