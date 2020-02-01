@@ -4,6 +4,8 @@
 
 using namespace std;
 
+#define TRACE
+
 extern "C"
 {
 #ifdef INTENSE_DEBUG
@@ -499,7 +501,7 @@ Func CPU::jit_region(uint64_t hash, unsigned pc, unsigned count)
 	{
 		uint32_t instr = state.imem[pc + i];
 		APPEND("pc_%03x:\n", (pc + i) * 4);
-#if 0
+#ifdef TRACE
 		APPEND("RSP_REPORT_PC(STATE, %u, %u);\n", (pc + i) * 4, instr);
 #endif
 		PIPELINE_BRANCH();

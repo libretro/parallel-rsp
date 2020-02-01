@@ -5,6 +5,9 @@
 
 using namespace std;
 
+#define TRACE
+//#define TRACE_ENTER
+
 // We're only guaranteed 3 V registers (x86).
 #define JIT_REGISTER_SELF JIT_V0
 #define JIT_REGISTER_STATE JIT_V1
@@ -259,7 +262,7 @@ extern "C"
 		dram[off3] = (data >> 0) & 0xff;
 	}
 
-#if 0
+#ifdef TRACE
 	static void rsp_report_pc(const CPUState *state, jit_uword_t pc, jit_uword_t instr)
 	{
 		auto disasm = disassemble(pc, instr);
@@ -275,10 +278,12 @@ extern "C"
 		}
 		printf("\n");
 	}
+#endif
 
+#ifdef TRACE_ENTER
 	static void rsp_report_enter(jit_uword_t pc)
 	{
-		printf(" ... Enter 0x%03x ...", unsigned(pc));
+		printf("  ... Enter 0x%03x ...  ", unsigned(pc & 0xffcu));
 	}
 #endif
 }
@@ -356,7 +361,7 @@ void CPU::init_jit_thunks()
 	// When thunks need non-local goto, they jump here.
 	auto *entry_label = jit_indirect();
 
-#if 0
+#ifdef TRACE_ENTER
 	{
 		// Save PC.
 		jit_stxi_i(offsetof(CPUState, pc), JIT_REGISTER_STATE, JIT_REGISTER_NEXT_PC);
@@ -761,7 +766,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
                           InstructionInfo &info, const InstructionInfo &last_info,
                           bool first_instruction, bool next_instruction_is_branch_target)
 {
-#if 0
+#ifdef TRACE
 	jit_save_cond_branch_taken(_jit);
 	jit_prepare();
 	jit_pushargr(JIT_REGISTER_STATE);
@@ -1649,7 +1654,7 @@ Func CPU::jit_region(uint64_t hash, unsigned pc_word, unsigned instruction_count
 
 		uint32_t instr = state.imem[pc_word + i];
 
-#if 0
+#ifdef TRACE
 		mips_disasm += disassemble((pc_word + i) << 2, instr) + "\n";
 #endif
 
@@ -1698,11 +1703,13 @@ Func CPU::jit_region(uint64_t hash, unsigned pc_word, unsigned instruction_count
 
 	auto ret = reinterpret_cast<Func>(jit_emit());
 
-	//fprintf(stderr, " === DISASM ===\n");
-	//jit_disassemble();
+#ifdef TRACE
+	fprintf(stderr, " === DISASM ===\n");
+	fprintf(stderr, "%s\n", mips_disasm.c_str());
+	jit_disassemble();
+	fprintf(stderr, " === DISASM END ===\n\n");
+#endif
 	jit_clear_state();
-	//fprintf(stderr, "%s\n", mips_disasm.c_str());
-	//fprintf(stderr, " === DISASM END ===\n\n");
 	cleanup_jit_states.push_back(_jit);
 	return ret;
 }
