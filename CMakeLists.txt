@@ -15,6 +15,7 @@ add_library(parallel-rsp STATIC
 		rsp.cpp rsp.hpp
 		rsp_jit.cpp rsp_jit.hpp
 		debug_jit.cpp debug_jit.hpp
+		rsp_disasm.cpp rsp_disasm.hpp
 		rsp/ls.cpp rsp/pipeline.h
 		rsp/reciprocal.cpp rsp/reciprocal.h
 		rsp_1.1.h

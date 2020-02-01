@@ -1,4 +1,5 @@
 #include "rsp.hpp"
+#include "rsp_disasm.hpp"
 #include <utility>
 
 using namespace std;
@@ -43,18 +44,13 @@ CPU::~CPU()
 {
 }
 
-static const char *reg_names[32] = {
-	"zero", "at", "v0", "v1", "a0", "a1", "a2", "a3", "t0", "t1", "t2", "t3", "t4", "t5", "t6", "t7",
-	"s0",   "s1", "s2", "s3", "s4", "s5", "s6", "s7", "t8", "t9", "k0", "k1", "gp", "sp", "s8", "ra",
-};
-#define NAME(reg) reg_names[reg]
-
 void CPU::init_symbol_table()
 {
 #define S(sym) symbol_table["RSP_" #sym] = reinterpret_cast<uint64_t>(RSP_##sym)
 	S(EXIT);
 	S(CALL);
 	S(RETURN);
+	S(REPORT_PC);
 
 #ifdef INTENSE_DEBUG
 	S(DEBUG);
@@ -501,10 +497,11 @@ Func CPU::jit_region(uint64_t hash, unsigned pc, unsigned count)
 	APPEND("unsigned *dmem = STATE->dmem;\n");
 	for (unsigned i = 0; i < count; i++)
 	{
+		uint32_t instr = state.imem[pc + i];
 		APPEND("pc_%03x:\n", (pc + i) * 4);
+		APPEND("RSP_REPORT_PC(STATE, %u, %u);\n", (pc + i) * 4, instr);
 		PIPELINE_BRANCH();
 
-		uint32_t instr = state.imem[pc + i];
 		uint32_t type = instr >> 26;
 		uint32_t rd, rs, rt, shift, imm;
 		int16_t simm;
@@ -561,34 +558,34 @@ Func CPU::jit_region(uint64_t hash, unsigned pc, unsigned count)
 					APPEND_RD_NOT_R0("r%u = r%u << %u;\n", rd, rt, shift);
 
 					if (instr)
-						DISASM("sll %s, %s, %u\n", NAME(rd), NAME(rt), shift);
+						DISASM("sll %s, %s, %u\n", register_name(rd), register_name(rt), shift);
 					else
 						DISASM("nop\n");
 					break;
 
 				case 002: // SRL
 					APPEND_RD_NOT_R0("r%u = r%u >> %u;\n", rd, rt, shift);
-					DISASM("srl %s, %s, %u\n", NAME(rd), NAME(rt), shift);
+					DISASM("srl %s, %s, %u\n", register_name(rd), register_name(rt), shift);
 					break;
 
 				case 003: // SRA
 					APPEND_RD_NOT_R0("r%u = (int)r%u >> (int)%u;\n", rd, rt, shift);
-					DISASM("sra %s, %s, %u\n", NAME(rd), NAME(rt), shift);
+					DISASM("sra %s, %s, %u\n", register_name(rd), register_name(rt), shift);
 					break;
 
 				case 004: // SLLV
 					APPEND_RD_NOT_R0("r%u = r%u << MASK_SA(r%u);\n", rd, rt, rs);
-					DISASM("sllv %s, %s, $%u\n", NAME(rd), NAME(rt), rs);
+					DISASM("sllv %s, %s, $%u\n", register_name(rd), register_name(rt), rs);
 					break;
 
 				case 006: // SRLV
 					APPEND_RD_NOT_R0("r%u = r%u >> MASK_SA(r%u);\n", rd, rt, rs);
-					DISASM("srlv %s, %s, $%u\n", NAME(rd), NAME(rt), rs);
+					DISASM("srlv %s, %s, $%u\n", register_name(rd), register_name(rt), rs);
 					break;
 
 				case 007: // SRAV
 					APPEND_RD_NOT_R0("r%u = (int)r%u >> (int)MASK_SA(r%u);\n", rd, rt, rs);
-					DISASM("srav %s, %s, $%u\n", NAME(rd), NAME(rt), rs);
+					DISASM("srav %s, %s, $%u\n", register_name(rd), register_name(rt), rs);
 					break;
 
 				case 011: // JALR
@@ -598,7 +595,7 @@ Func CPU::jit_region(uint64_t hash, unsigned pc, unsigned count)
 					}
 					set_pc_indirect(rs);
 					pipe_pending_indirect_call = true;
-					DISASM("jalr %s\n", NAME(rs));
+					DISASM("jalr %s\n", register_name(rs));
 #ifdef INTENSE_DEBUG
 					APPEND("RSP_DEBUG(STATE, \"JALR\", pipe_branch_delay * 4, 0);\n");
 #endif
@@ -606,7 +603,7 @@ Func CPU::jit_region(uint64_t hash, unsigned pc, unsigned count)
 				case 010: // JR
 					set_pc_indirect(rs);
 					pipe_pending_return = true;
-					DISASM("jr %s\n", NAME(rs));
+					DISASM("jr %s\n", register_name(rs));
 #ifdef INTENSE_DEBUG
 					APPEND("RSP_DEBUG(STATE, \"JR\", pipe_branch_delay * 4, 0);\n");
 #endif
@@ -619,43 +616,43 @@ Func CPU::jit_region(uint64_t hash, unsigned pc, unsigned count)
 				case 040: // ADD
 				case 041: // ADDU
 					APPEND_RD_NOT_R0("r%u = r%u + r%u;\n", rd, rs, rt);
-					DISASM("add %s, %s, %s\n", NAME(rd), NAME(rs), NAME(rt));
+					DISASM("add %s, %s, %s\n", register_name(rd), register_name(rs), register_name(rt));
 					break;
 
 				case 042: // SUB
 				case 043: // SUBU
 					APPEND_RD_NOT_R0("r%u = r%u - r%u;\n", rd, rs, rt);
-					DISASM("sub %s, %s, %s\n", NAME(rd), NAME(rs), NAME(rt));
+					DISASM("sub %s, %s, %s\n", register_name(rd), register_name(rs), register_name(rt));
 					break;
 
 				case 044: // AND
 					APPEND_RD_NOT_R0("r%u = r%u & r%u;\n", rd, rs, rt);
-					DISASM("and %s, %s, %s\n", NAME(rd), NAME(rs), NAME(rt));
+					DISASM("and %s, %s, %s\n", register_name(rd), register_name(rs), register_name(rt));
 					break;
 
 				case 045: // OR
 					APPEND_RD_NOT_R0("r%u = r%u | r%u;\n", rd, rs, rt);
-					DISASM("or %s, %s, %s\n", NAME(rd), NAME(rs), NAME(rt));
+					DISASM("or %s, %s, %s\n", register_name(rd), register_name(rs), register_name(rt));
 					break;
 
 				case 046: // XOR
 					APPEND_RD_NOT_R0("r%u = r%u ^ r%u;\n", rd, rs, rt);
-					DISASM("xor %s, %s, %s\n", NAME(rd), NAME(rs), NAME(rt));
+					DISASM("xor %s, %s, %s\n", register_name(rd), register_name(rs), register_name(rt));
 					break;
 
 				case 047: // NOR
 					APPEND_RD_NOT_R0("r%u = ~(r%u | r%u);\n", rd, rs, rt);
-					DISASM("nor %s, %s, %s\n", NAME(rd), NAME(rs), NAME(rt));
+					DISASM("nor %s, %s, %s\n", register_name(rd), register_name(rs), register_name(rt));
 					break;
 
 				case 052: // SLT
 					APPEND_RD_NOT_R0("r%u = (int)r%u < (int)r%u;\n", rd, rs, rt);
-					DISASM("slt %s, %s, %s\n", NAME(rd), NAME(rs), NAME(rt));
+					DISASM("slt %s, %s, %s\n", register_name(rd), register_name(rs), register_name(rt));
 					break;
 
 				case 053: // SLTU
 					APPEND_RD_NOT_R0("r%u = r%u < r%u;\n", rd, rs, rt);
-					DISASM("sltu %s, %s, %s\n", NAME(rd), NAME(rs), NAME(rt));
+					DISASM("sltu %s, %s, %s\n", register_name(rd), register_name(rs), register_name(rt));
 					break;
 
 				default:
@@ -674,14 +671,14 @@ Func CPU::jit_region(uint64_t hash, unsigned pc, unsigned count)
 					rs = (instr >> 21) & 31;
 					set_pc(pc + i + 1 + instr);
 					APPEND("BRANCH_IF((int)r%u < 0);\n", rs);
-					DISASM("bltzal %s, 0x%x\n", NAME(rs), ((pc + i + 1 + instr) << 2) & 0xffc);
+					DISASM("bltzal %s, 0x%x\n", register_name(rs), ((pc + i + 1 + instr) << 2) & 0xffc);
 					break;
 
 				case 000: // BLTZ
 					rs = (instr >> 21) & 31;
 					set_pc(pc + i + 1 + instr);
 					APPEND("BRANCH_IF((int)r%u < 0);\n", rs);
-					DISASM("bltz %s, 0x%x\n", NAME(rs), ((pc + i + 1 + instr) << 2) & 0xffc);
+					DISASM("bltz %s, 0x%x\n", register_name(rs), ((pc + i + 1 + instr) << 2) & 0xffc);
 					break;
 
 				case 021: // BGEZAL
@@ -689,14 +686,14 @@ Func CPU::jit_region(uint64_t hash, unsigned pc, unsigned count)
 					rs = (instr >> 21) & 31;
 					set_pc(pc + i + 1 + instr);
 					APPEND("BRANCH_IF((int)r%u >= 0);\n", rs);
-					DISASM("bgezal %s, 0x%x\n", NAME(rs), ((pc + i + 1 + instr) << 2) & 0xffc);
+					DISASM("bgezal %s, 0x%x\n", register_name(rs), ((pc + i + 1 + instr) << 2) & 0xffc);
 					break;
 
 				case 001: // BGEZ
 					rs = (instr >> 21) & 31;
 					set_pc(pc + i + 1 + instr);
 					APPEND("BRANCH_IF((int)r%u >= 0);\n", rs);
-					DISASM("bgez %s, 0x%x\n", NAME(rs), ((pc + i + 1 + instr) << 2) & 0xffc);
+					DISASM("bgez %s, 0x%x\n", register_name(rs), ((pc + i + 1 + instr) << 2) & 0xffc);
 					break;
 
 				default:
@@ -728,7 +725,7 @@ Func CPU::jit_region(uint64_t hash, unsigned pc, unsigned count)
 				rt = (instr >> 16) & 31;
 				set_pc(pc + i + 1 + instr);
 				APPEND("BRANCH_IF(r%u == r%u);\n", rs, rt);
-				DISASM("beq %s, %s, 0x%x\n", NAME(rs), NAME(rt), ((pc + i + 1 + instr) & 0x3ff) << 2);
+				DISASM("beq %s, %s, 0x%x\n", register_name(rs), register_name(rt), ((pc + i + 1 + instr) & 0x3ff) << 2);
 				break;
 
 			case 005: // BNE
@@ -736,21 +733,21 @@ Func CPU::jit_region(uint64_t hash, unsigned pc, unsigned count)
 				rt = (instr >> 16) & 31;
 				set_pc(pc + i + 1 + instr);
 				APPEND("BRANCH_IF(r%u != r%u);\n", rs, rt);
-				DISASM("bne %s, %s, 0x%x\n", NAME(rs), NAME(rt), ((pc + i + 1 + instr) & 0x3ff) << 2);
+				DISASM("bne %s, %s, 0x%x\n", register_name(rs), register_name(rt), ((pc + i + 1 + instr) & 0x3ff) << 2);
 				break;
 
 			case 006: // BLEZ
 				rs = (instr >> 21) & 31;
 				set_pc(pc + i + 1 + instr);
 				APPEND("BRANCH_IF((int)r%u <= 0);\n", rs);
-				DISASM("blez %s, 0x%x\n", NAME(rs), ((pc + i + 1 + instr) & 0x3ff) << 2);
+				DISASM("blez %s, 0x%x\n", register_name(rs), ((pc + i + 1 + instr) & 0x3ff) << 2);
 				break;
 
 			case 007: // BGTZ
 				rs = (instr >> 21) & 31;
 				set_pc(pc + i + 1 + instr);
 				APPEND("BRANCH_IF((int)r%u > 0);\n", rs);
-				DISASM("bgtz %s, 0x%x\n", NAME(rs), ((pc + i + 1 + instr) & 0x3ff) << 2);
+				DISASM("bgtz %s, 0x%x\n", register_name(rs), ((pc + i + 1 + instr) & 0x3ff) << 2);
 				break;
 
 			case 010:
@@ -761,9 +758,9 @@ Func CPU::jit_region(uint64_t hash, unsigned pc, unsigned count)
 				APPEND_RT_NOT_R0("r%u = (int)r%u + %d;\n", rt, rs, simm);
 
 				if (rs != 0)
-					DISASM("addi %s, %s, %d\n", NAME(rt), NAME(rs), simm);
+					DISASM("addi %s, %s, %d\n", register_name(rt), register_name(rs), simm);
 				else
-					DISASM("li %s, %d\n", NAME(rt), simm);
+					DISASM("li %s, %d\n", register_name(rt), simm);
 				break;
 
 			case 012: // SLTI
@@ -771,7 +768,7 @@ Func CPU::jit_region(uint64_t hash, unsigned pc, unsigned count)
 				rs = (instr >> 21) & 31;
 				rt = (instr >> 16) & 31;
 				APPEND_RT_NOT_R0("r%u = (int)r%u < %d;\n", rt, rs, simm);
-				DISASM("slti %s, %s, %d\n", NAME(rt), NAME(rs), simm);
+				DISASM("slti %s, %s, %d\n", register_name(rt), register_name(rs), simm);
 				break;
 
 			case 013: // SLTIU
@@ -779,7 +776,7 @@ Func CPU::jit_region(uint64_t hash, unsigned pc, unsigned count)
 				rs = (instr >> 21) & 31;
 				rt = (instr >> 16) & 31;
 				APPEND_RT_NOT_R0("r%u = r%u < %u;\n", rt, rs, imm);
-				DISASM("sltiu %s, %s, %u\n", NAME(rt), NAME(rs), imm);
+				DISASM("sltiu %s, %s, %u\n", register_name(rt), register_name(rs), imm);
 				break;
 
 			case 014: // ANDI
@@ -787,7 +784,7 @@ Func CPU::jit_region(uint64_t hash, unsigned pc, unsigned count)
 				rs = (instr >> 21) & 31;
 				rt = (instr >> 16) & 31;
 				APPEND_RT_NOT_R0("r%u = r%u & %u;\n", rt, rs, imm);
-				DISASM("andi %s, %s, 0x%x\n", NAME(rt), NAME(rs), imm);
+				DISASM("andi %s, %s, 0x%x\n", register_name(rt), register_name(rs), imm);
 				break;
 
 			case 015: // ORI
@@ -795,7 +792,7 @@ Func CPU::jit_region(uint64_t hash, unsigned pc, unsigned count)
 				rs = (instr >> 21) & 31;
 				rt = (instr >> 16) & 31;
 				APPEND_RT_NOT_R0("r%u = r%u | %u;\n", rt, rs, imm);
-				DISASM("ori %s, %s, 0x%x\n", NAME(rt), NAME(rs), imm);
+				DISASM("ori %s, %s, 0x%x\n", register_name(rt), register_name(rs), imm);
 				break;
 
 			case 016: // XORI
@@ -803,14 +800,14 @@ Func CPU::jit_region(uint64_t hash, unsigned pc, unsigned count)
 				rs = (instr >> 21) & 31;
 				rt = (instr >> 16) & 31;
 				APPEND_RT_NOT_R0("r%u = r%u ^ %u;\n", rt, rs, imm);
-				DISASM("xori %s, %s, 0x%x\n", NAME(rt), NAME(rs), imm);
+				DISASM("xori %s, %s, 0x%x\n", register_name(rt), register_name(rs), imm);
 				break;
 
 			case 017: // LUI
 				imm = instr & 0xffff;
 				rt = (instr >> 16) & 31;
 				APPEND_RT_NOT_R0("r%u = %uu << 16u;\n", rt, imm);
-				DISASM("lui %s, 0x%x\n", NAME(rt), imm);
+				DISASM("lui %s, 0x%x\n", register_name(rt), imm);
 				break;
 
 			case 020: // COP0
@@ -885,7 +882,7 @@ Func CPU::jit_region(uint64_t hash, unsigned pc, unsigned count)
 				{
 					APPEND("r%u = (signed char)READ_MEM_U8(dmem, (r%u + (%d)) & 0xfff);\n", rt, rs, simm);
 				}
-				DISASM("lb %s, %d(%s)\n", NAME(rt), simm, NAME(rs));
+				DISASM("lb %s, %d(%s)\n", register_name(rt), simm, register_name(rs));
 				break;
 
 			case 041: // LH
@@ -900,7 +897,7 @@ Func CPU::jit_region(uint64_t hash, unsigned pc, unsigned count)
 					APPEND("else\n");
 					APPEND("  r%u = (signed short)READ_MEM_U16(dmem, addr);\n", rt);
 				}
-				DISASM("lh %s, %d(%s)\n", NAME(rt), simm, NAME(rs));
+				DISASM("lh %s, %d(%s)\n", register_name(rt), simm, register_name(rs));
 				break;
 
 			case 043: // LW
@@ -915,7 +912,7 @@ Func CPU::jit_region(uint64_t hash, unsigned pc, unsigned count)
 					APPEND("else\n");
 					APPEND("  r%u = READ_MEM_U32(dmem, addr);\n", rt);
 				}
-				DISASM("lw %s, %d(%s)\n", NAME(rt), simm, NAME(rs));
+				DISASM("lw %s, %d(%s)\n", register_name(rt), simm, register_name(rs));
 				break;
 
 			case 044: // LBU
@@ -926,7 +923,7 @@ Func CPU::jit_region(uint64_t hash, unsigned pc, unsigned count)
 				{
 					APPEND("r%u = READ_MEM_U8(dmem, (r%u + (%d)) & 0xfff);\n", rt, rs, simm);
 				}
-				DISASM("lbu %s, %d(%s)\n", NAME(rt), simm, NAME(rs));
+				DISASM("lbu %s, %d(%s)\n", register_name(rt), simm, register_name(rs));
 				break;
 
 			case 045: // LHU
@@ -942,7 +939,7 @@ Func CPU::jit_region(uint64_t hash, unsigned pc, unsigned count)
 					APPEND("else\n");
 					APPEND("  r%u = READ_MEM_U16(dmem, addr);\n", rt);
 				}
-				DISASM("lhu %s, %d(%s)\n", NAME(rt), simm, NAME(rs));
+				DISASM("lhu %s, %d(%s)\n", register_name(rt), simm, register_name(rs));
 				break;
 
 			case 050: // SB
@@ -950,7 +947,7 @@ Func CPU::jit_region(uint64_t hash, unsigned pc, unsigned count)
 				rt = (instr >> 16) & 31;
 				rs = (instr >> 21) & 31;
 				APPEND("WRITE_MEM_U8(dmem, ((r%u + (%d)) & 0xfff), r%u);\n", rs, simm, rt);
-				DISASM("sb %s, %d(%s)\n", NAME(rt), simm, NAME(rs));
+				DISASM("sb %s, %d(%s)\n", register_name(rt), simm, register_name(rs));
 				break;
 
 			case 051: // SH
@@ -962,7 +959,7 @@ Func CPU::jit_region(uint64_t hash, unsigned pc, unsigned count)
 				APPEND("  WRITE_MEM_U16_UNALIGNED(dmem, addr, r%u);\n", rt);
 				APPEND("else\n");
 				APPEND("  WRITE_MEM_U16(dmem, addr, r%u);\n", rt);
-				DISASM("sh %s, %d(%s)\n", NAME(rt), simm, NAME(rs));
+				DISASM("sh %s, %d(%s)\n", register_name(rt), simm, register_name(rs));
 				break;
 
 			case 053: // SW
@@ -974,7 +971,7 @@ Func CPU::jit_region(uint64_t hash, unsigned pc, unsigned count)
 				APPEND("  WRITE_MEM_U32_UNALIGNED(dmem, addr, r%u);\n", rt);
 				APPEND("else\n");
 				APPEND("  WRITE_MEM_U32(dmem, addr, r%u);\n", rt);
-				DISASM("sw %s, %d(%s)\n", NAME(rt), simm, NAME(rs));
+				DISASM("sw %s, %d(%s)\n", register_name(rt), simm, register_name(rs));
 				break;
 
 			case 062: // LWC2
@@ -1102,6 +1099,8 @@ extern void RSP_MTC2(struct cpu_state *STATE, unsigned rt, unsigned vd, unsigned
 extern void RSP_MFC2(struct cpu_state *STATE, unsigned rt, unsigned vs, unsigned e);
 extern void RSP_CFC2(struct cpu_state *STATE, unsigned rt, unsigned rd);
 extern void RSP_CTC2(struct cpu_state *STATE, unsigned rt, unsigned rd);
+
+extern void RSP_REPORT_PC(struct cpu_state *STATE, unsigned pc, unsigned instr);
 
 #define DECL_LS(op) \
    extern void RSP_##op(struct cpu_state *STATE, unsigned rt, unsigned element, int offset, unsigned base)
@@ -1254,7 +1253,7 @@ void CPU::print_registers()
 	fprintf(DUMP_FILE, "RSP state:\n");
 	fprintf(DUMP_FILE, "  PC: 0x%03x\n", state.pc);
 	for (unsigned i = 1; i < 32; i++)
-		fprintf(DUMP_FILE, "  SR[%s] = 0x%08x\n", NAME(i), state.sr[i]);
+		fprintf(DUMP_FILE, "  SR[%s] = 0x%08x\n", register_name(i), state.sr[i]);
 	fprintf(DUMP_FILE, "\n");
 	for (unsigned i = 0; i < 32; i++)
 	{
@@ -1333,6 +1332,24 @@ extern "C"
 	void RSP_EXIT(void *cpu, int mode)
 	{
 		static_cast<CPU *>(cpu)->exit(static_cast<ReturnMode>(mode));
+	}
+
+	void RSP_REPORT_PC(void *cpu, unsigned pc, unsigned instr)
+	{
+		auto *state = static_cast<const CPUState *>(cpu);
+		auto disasm = disassemble(pc, instr);
+		puts(disasm.c_str());
+
+		for (unsigned i = 0; i < 32; i++)
+		{
+			if (i == 0)
+				printf("                  ");
+			else
+				printf("[%s = 0x%08x] ", register_name(i), state->sr[i]);
+			if ((i & 7) == 7)
+				printf("\n");
+		}
+		printf("\n");
 	}
 }
 

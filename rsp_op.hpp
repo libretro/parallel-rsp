@@ -16,6 +16,7 @@ extern "C"
 	void RSP_CALL(void *opaque, unsigned target, unsigned ret);
 	void RSP_RETURN(void *opaque, unsigned pc);
 	void RSP_EXIT(void *opaque, int mode);
+	void RSP_REPORT_PC(void *rsp, unsigned pc, unsigned instr);
 
 #define DECL_LS(op) void RSP_##op(RSP::CPUState *rsp, unsigned rt, unsigned element, int offset, unsigned base)
 

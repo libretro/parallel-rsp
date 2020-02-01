@@ -1,4 +1,5 @@
 #include "rsp_jit.hpp"
+#include "rsp_disasm.hpp"
 #include <utility>
 #include <assert.h>
 
@@ -24,12 +25,6 @@ namespace RSP
 {
 namespace JIT
 {
-static const char *reg_names[32] = {
-	"zero", "at", "v0", "v1", "a0", "a1", "a2", "a3", "t0", "t1", "t2", "t3", "t4", "t5", "t6", "t7",
-	"s0",   "s1", "s2", "s3", "s4", "s5", "s6", "s7", "t8", "t9", "k0", "k1", "gp", "sp", "s8", "ra",
-};
-#define NAME(reg) reg_names[reg]
-
 CPU::CPU()
 {
 	cleanup_jit_states.reserve(16 * 1024);
@@ -262,6 +257,22 @@ extern "C"
 		dram[off1] = (data >> 16) & 0xff;
 		dram[off2] = (data >> 8) & 0xff;
 		dram[off3] = (data >> 0) & 0xff;
+	}
+
+	static void rsp_report_pc(const CPUState *state, jit_uword_t pc, jit_uword_t instr)
+	{
+		auto disasm = disassemble(pc, instr);
+		puts(disasm.c_str());
+		for (unsigned i = 0; i < 32; i++)
+		{
+			if (i == 0)
+				printf("                  ");
+			else
+				printf("[%s = 0x%08x] ", register_name(i), state->sr[i]);
+			if ((i & 7) == 7)
+				printf("\n");
+		}
+		printf("\n");
 	}
 }
 
@@ -583,18 +594,6 @@ void CPU::jit_store_register(jit_state_t *_jit, unsigned jit_register, unsigned 
 	jit_stxi_i(offsetof(CPUState, sr) + 4 * mips_register, JIT_REGISTER_STATE, jit_register);
 }
 
-#define DISASM(asmfmt, ...) do { \
-    char buf[1024]; \
-    sprintf(buf, "0x%03x   " asmfmt, pc, __VA_ARGS__); \
-    mips_disasm += buf; \
-} while(0)
-
-#define DISASM_NOP() do { \
-    char buf[1024]; \
-    sprintf(buf, "0x%03x   nop\n", pc); \
-    mips_disasm += buf; \
-} while(0)
-
 void CPU::jit_emit_store_operation(jit_state_t *_jit,
                                    uint32_t pc, uint32_t instr,
                                    void (*jit_emitter)(jit_state_t *jit, unsigned, unsigned, unsigned), const char *asmop,
@@ -649,7 +648,6 @@ void CPU::jit_emit_store_operation(jit_state_t *_jit,
 
 	if (align_mask)
 		jit_patch(aligned);
-	DISASM("%s %s, %d(%s)\n", asmop, NAME(rt), simm, NAME(rs));
 }
 
 // The RSP may or may not have a load-delay slot, but it doesn't seem to matter in practice, so just emulate without
@@ -665,10 +663,7 @@ void CPU::jit_emit_load_operation(jit_state_t *_jit,
 	uint32_t align_mask = endian_flip ^ 3;
 	unsigned rt = (instr >> 16) & 31;
 	if (rt == 0)
-	{
-		DISASM_NOP();
 		return;
-	}
 
 	int16_t simm = int16_t(instr);
 	unsigned rs = (instr >> 21) & 31;
@@ -716,13 +711,22 @@ void CPU::jit_emit_load_operation(jit_state_t *_jit,
 
 	if (align_mask)
 		jit_patch(aligned);
-	DISASM("%s %s, %d(%s)\n", asmop, NAME(rt), simm, NAME(rs));
 }
 
 void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
                           InstructionInfo &info, const InstructionInfo &last_info,
                           bool first_instruction, bool next_instruction_is_branch_target)
 {
+	if (last_info.conditional)
+		jit_save_cond_branch_taken(_jit);
+	jit_prepare();
+	jit_pushargr(JIT_REGISTER_STATE);
+	jit_pushargi(pc);
+	jit_pushargi(instr);
+	jit_finishi(reinterpret_cast<jit_pointer_t>(rsp_report_pc));
+	if (last_info.conditional)
+		jit_restore_cond_branch_taken(_jit);
+
 	// VU
 	if ((instr >> 25) == 0x25)
 	{
@@ -757,12 +761,10 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		VUOp vuop;
 		if (op_str)
 		{
-			DISASM("%s v%u, v%u, v%u[%u]\n", op_str, vd, vs, vt, e);
 			vuop = ops[op];
 		}
 		else
 		{
-			DISASM("cop2 %u reserved\n", op);
 			vuop = RSP_RESERVED;
 		}
 
@@ -790,8 +792,8 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 
 	uint32_t type = instr >> 26;
 
-#define NOP_IF_RD_ZERO() if (rd == 0) { DISASM_NOP(); break; }
-#define NOP_IF_RT_ZERO() if (rt == 0) { DISASM_NOP(); break; }
+#define NOP_IF_RD_ZERO() if (rd == 0) { break; }
+#define NOP_IF_RT_ZERO() if (rt == 0) { break; }
 
 	switch (type)
 	{
@@ -808,8 +810,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 	NOP_IF_RD_ZERO(); \
 	jit_load_register(_jit, JIT_REGISTER_TMP0, rt); \
 	jit_##op(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, shift); \
-	jit_store_register(_jit, JIT_REGISTER_TMP0, rd); \
-	DISASM(#asmop " %s, %s, %u\n", NAME(rd), NAME(rt), shift)
+	jit_store_register(_jit, JIT_REGISTER_TMP0, rd)
 
 		case 000: // SLL
 		{
@@ -835,8 +836,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 	jit_load_register(_jit, JIT_REGISTER_TMP1, rs); \
 	jit_andi(JIT_REGISTER_TMP1, JIT_REGISTER_TMP1, 31); \
 	jit_##op(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1); \
-	jit_store_register(_jit, JIT_REGISTER_TMP0, rd); \
-	DISASM(#asmop " %s, %s, %s\n", NAME(rd), NAME(rt), NAME(rs))
+	jit_store_register(_jit, JIT_REGISTER_TMP0, rd)
 
 		case 004: // SLLV
 		{
@@ -876,7 +876,6 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 				info.conditional = true;
 				jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 1);
 			}
-			DISASM("jr %s\n", NAME(rs));
 			break;
 		}
 
@@ -897,7 +896,6 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 				info.conditional = true;
 				jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 1);
 			}
-			DISASM("jalr %s\n", NAME(rs));
 			break;
 		}
 
@@ -905,7 +903,6 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		{
 			jit_exit(_jit, pc, last_info, MODE_BREAK, first_instruction);
 			info.handles_delay_slot = true;
-			DISASM("break %u\n", 0);
 			break;
 		}
 
@@ -914,8 +911,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 	jit_load_register(_jit, JIT_REGISTER_TMP0, rs); \
 	jit_load_register(_jit, JIT_REGISTER_TMP1, rt); \
 	jit_##op(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1); \
-	jit_store_register(_jit, JIT_REGISTER_TMP0, rd); \
-	DISASM(#asmop " %s, %s, %s\n", NAME(rd), NAME(rt), NAME(rs))
+	jit_store_register(_jit, JIT_REGISTER_TMP0, rd)
 
 		case 040: // ADD
 		case 041: // ADDU
@@ -957,7 +953,6 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_orr(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, JIT_REGISTER_TMP1);
 			jit_xori(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, jit_word_t(-1));
 			jit_store_register(_jit, JIT_REGISTER_TMP0, rd);
-			DISASM("nor %s, %s, %s\n", NAME(rd), NAME(rt), NAME(rs));
 			break;
 		}
 
@@ -1000,7 +995,6 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			info.branch = true;
 			info.conditional = true;
 			info.branch_target = target_pc;
-			DISASM("bltzal %s, 0x%03x\n", NAME(rs), target_pc);
 			break;
 		}
 
@@ -1014,7 +1008,6 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			info.branch = true;
 			info.conditional = true;
 			info.branch_target = target_pc;
-			DISASM("bltz %s, 0x%03x\n", NAME(rs), target_pc);
 			break;
 		}
 
@@ -1033,7 +1026,6 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			info.branch = true;
 			info.conditional = true;
 			info.branch_target = target_pc;
-			DISASM("bltzal %s, 0x%03x\n", NAME(rs), target_pc);
 			break;
 		}
 
@@ -1047,7 +1039,6 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			info.branch = true;
 			info.conditional = true;
 			info.branch_target = target_pc;
-			DISASM("bgez %s, 0x%03x\n", NAME(rs), target_pc);
 			break;
 		}
 
@@ -1070,7 +1061,6 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			info.conditional = true;
 			jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 1);
 		}
-		DISASM("jal 0x%03x\n", target_pc);
 		break;
 	}
 
@@ -1085,7 +1075,6 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			info.conditional = true;
 			jit_movi(JIT_REGISTER_COND_BRANCH_TAKEN, 1);
 		}
-		DISASM("j 0x%03x\n", target_pc);
 		break;
 	}
 
@@ -1101,7 +1090,6 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		info.branch = true;
 		info.conditional = true;
 		info.branch_target = target_pc;
-		DISASM("beq %s, %s, 0x%03x\n", NAME(rs), NAME(rt), target_pc);
 		break;
 	}
 
@@ -1117,7 +1105,6 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		info.branch = true;
 		info.conditional = true;
 		info.branch_target = target_pc;
-		DISASM("bne %s, %s, 0x%03x\n", NAME(rs), NAME(rt), target_pc);
 		break;
 	}
 
@@ -1131,7 +1118,6 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		info.branch = true;
 		info.conditional = true;
 		info.branch_target = target_pc;
-		DISASM("blez %s, 0x%03x\n", NAME(rs), target_pc);
 		break;
 	}
 
@@ -1145,7 +1131,6 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		info.branch = true;
 		info.conditional = true;
 		info.branch_target = target_pc;
-		DISASM("bgtz %s, 0x%03x\n", NAME(rs), target_pc);
 		break;
 	}
 
@@ -1155,8 +1140,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 	unsigned rs = (instr >> 21) & 31; \
 	jit_load_register(_jit, JIT_REGISTER_TMP0, rs); \
 	jit_##op(JIT_REGISTER_TMP0, JIT_REGISTER_TMP0, immtype(instr)); \
-	jit_store_register(_jit, JIT_REGISTER_TMP0, rt); \
-	DISASM(#asmop " %s, %s, %d\n", NAME(rt), NAME(rs), immtype(instr))
+	jit_store_register(_jit, JIT_REGISTER_TMP0, rt)
 
 	case 010: // ADDI
 	case 011:
@@ -1202,7 +1186,6 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		int16_t imm = int16_t(instr);
 		jit_movi(JIT_REGISTER_TMP0, imm << 16);
 		jit_store_register(_jit, JIT_REGISTER_TMP0, rt);
-		DISASM("lui %s, %d\n", NAME(rt), imm);
 		break;
 	}
 
@@ -1233,7 +1216,6 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_exit_dynamic(_jit, pc, last_info, first_instruction);
 			jit_patch(noexit);
 
-			DISASM("mfc0 %s, %s\n", NAME(rt), NAME(rd));
 			break;
 		}
 
@@ -1256,7 +1238,6 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_exit_dynamic(_jit, pc, last_info, first_instruction);
 			jit_patch(noexit);
 
-			DISASM("mtc0 %s, %s\n", NAME(rd), NAME(rt));
 			break;
 		}
 
@@ -1290,7 +1271,6 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			if (last_info.conditional)
 				jit_restore_cond_branch_taken(_jit);
 
-			DISASM("mfc2 %s, %s, %u\n", NAME(rt), NAME(rd), imm);
 			break;
 		}
 
@@ -1308,7 +1288,6 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			if (last_info.conditional)
 				jit_restore_cond_branch_taken(_jit);
 
-			DISASM("cfc2 %s, %s\n", NAME(rt), NAME(rd));
 			break;
 		}
 
@@ -1327,7 +1306,6 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			if (last_info.conditional)
 				jit_restore_cond_branch_taken(_jit);
 
-			DISASM("mtc2 %s, %s, %u\n", NAME(rt), NAME(rd), imm);
 			break;
 		}
 
@@ -1345,7 +1323,6 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			if (last_info.conditional)
 				jit_restore_cond_branch_taken(_jit);
 
-			DISASM("ctc2 %s, %s\n", NAME(rt), NAME(rd));
 			break;
 		}
 
@@ -1469,10 +1446,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_finishi(reinterpret_cast<jit_pointer_t>(ops[rd]));
 			if (last_info.conditional)
 				jit_restore_cond_branch_taken(_jit);
-			DISASM("%s v%u, %u, %d(%s)\n", op, rt, imm, simm, NAME(rs));
 		}
-		else
-			DISASM_NOP();
 
 		break;
 	}
@@ -1511,10 +1485,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_finishi(reinterpret_cast<jit_pointer_t>(ops[rd]));
 			if (last_info.conditional)
 				jit_restore_cond_branch_taken(_jit);
-			DISASM("%s v%u, %u, %d(%s)\n", op, rt, imm, simm, NAME(rs));
 		}
-		else
-			DISASM_NOP();
 
 		break;
 	}
@@ -1683,11 +1654,11 @@ Func CPU::jit_region(uint64_t hash, unsigned pc_word, unsigned instruction_count
 
 	auto ret = reinterpret_cast<Func>(jit_emit());
 
-	//printf(" === DISASM ===\n");
+	//fprintf(stderr, " === DISASM ===\n");
 	//jit_disassemble();
 	jit_clear_state();
-	//printf("%s\n", mips_disasm.c_str());
-	//printf(" === DISASM END ===\n\n");
+	//fprintf(stderr, "%s\n", mips_disasm.c_str());
+	//fprintf(stderr, " === DISASM END ===\n\n");
 	cleanup_jit_states.push_back(_jit);
 	return ret;
 }
@@ -1725,7 +1696,7 @@ void CPU::print_registers()
 	fprintf(DUMP_FILE, "RSP state:\n");
 	fprintf(DUMP_FILE, "  PC: 0x%03x\n", state.pc);
 	for (unsigned i = 1; i < 32; i++)
-		fprintf(DUMP_FILE, "  SR[%s] = 0x%08x\n", NAME(i), state.sr[i]);
+		fprintf(DUMP_FILE, "  SR[%s] = 0x%08x\n", register_name(i), state.sr[i]);
 	fprintf(DUMP_FILE, "\n");
 	for (unsigned i = 0; i < 32; i++)
 	{
