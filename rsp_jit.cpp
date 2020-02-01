@@ -9,9 +9,9 @@ using namespace std;
 //#define TRACE_ENTER
 
 // We're only guaranteed 3 V registers (x86).
-#define JIT_REGISTER_SELF JIT_V0
-#define JIT_REGISTER_STATE JIT_V1
-#define JIT_REGISTER_DMEM JIT_V2
+#define JIT_REGISTER_STATE JIT_V0
+#define JIT_REGISTER_DMEM JIT_V1
+#define JIT_REGISTER_INDIRECT_PC JIT_V2
 
 #define JIT_REGISTER_MODE JIT_R1
 #define JIT_REGISTER_NEXT_PC JIT_R0
@@ -23,6 +23,13 @@ using namespace std;
 // We're only guaranteed 3 R registers (x86).
 #define JIT_REGISTER_COND_BRANCH_TAKEN JIT_R(JIT_R_NUM - 1)
 #define JIT_FRAME_SIZE 256
+
+#if __WORDSIZE == 32
+#undef jit_ldxr_ui
+#define jit_ldxr_ui jit_ldxr_i
+#undef jit_ldxi_ui
+#define jit_ldxi_ui jit_ldxi_i
+#endif
 
 namespace RSP
 {
@@ -293,19 +300,17 @@ extern "C"
 
 void CPU::jit_save_indirect_register(jit_state_t *_jit, unsigned mips_register)
 {
-	jit_load_register(_jit, JIT_REGISTER_COND_BRANCH_TAKEN, mips_register);
-	jit_stxi(-JIT_FRAME_SIZE + 2 * sizeof(jit_word_t), JIT_FP, JIT_REGISTER_COND_BRANCH_TAKEN);
+	jit_load_register(_jit, JIT_REGISTER_INDIRECT_PC, mips_register);
 }
 
 void CPU::jit_save_illegal_indirect_register(jit_state_t *_jit)
 {
-	jit_load_indirect_register(_jit, JIT_REGISTER_COND_BRANCH_TAKEN);
-	jit_stxi(-JIT_FRAME_SIZE + 3 * sizeof(jit_word_t), JIT_FP, JIT_REGISTER_COND_BRANCH_TAKEN);
+	jit_stxi(-JIT_FRAME_SIZE + 3 * sizeof(jit_word_t), JIT_FP, JIT_REGISTER_INDIRECT_PC);
 }
 
 void CPU::jit_load_indirect_register(jit_state_t *_jit, unsigned jit_reg)
 {
-	jit_ldxi(jit_reg, JIT_FP, -JIT_FRAME_SIZE + 2 * sizeof(jit_word_t));
+	jit_movr(jit_reg, JIT_REGISTER_INDIRECT_PC);
 }
 
 void CPU::jit_load_illegal_indirect_register(jit_state_t *_jit, unsigned jit_reg)
@@ -313,13 +318,25 @@ void CPU::jit_load_illegal_indirect_register(jit_state_t *_jit, unsigned jit_reg
 	jit_ldxi(jit_reg, JIT_FP, -JIT_FRAME_SIZE + 3 * sizeof(jit_word_t));
 }
 
-void CPU::jit_save_cond_branch_taken(jit_state_t *_jit)
+void CPU::jit_save_caller_save_registers(jit_state_t *_jit)
 {
+	// Workarounds weird Lightning behavior around register usage.
+	// It has been observed that EBX (V0) is clobbered on x86 Linux when
+	// calling out to C code.
+	jit_live(JIT_REGISTER_STATE);
+	jit_live(JIT_REGISTER_DMEM);
+	jit_live(JIT_REGISTER_INDIRECT_PC);
 	jit_stxi(-JIT_FRAME_SIZE, JIT_FP, JIT_REGISTER_COND_BRANCH_TAKEN);
 }
 
-void CPU::jit_restore_cond_branch_taken(jit_state_t *_jit)
+void CPU::jit_restore_caller_save_registers(jit_state_t *_jit)
 {
+	// Workarounds weird Lightning behavior around register usage.
+	// It has been observed that EBX (V0) is clobbered on x86 Linux when
+	// calling out to C code.
+	jit_live(JIT_REGISTER_STATE);
+	jit_live(JIT_REGISTER_DMEM);
+	jit_live(JIT_REGISTER_INDIRECT_PC);
 	jit_ldxi(JIT_REGISTER_COND_BRANCH_TAKEN, JIT_FP, -JIT_FRAME_SIZE);
 }
 
@@ -352,11 +369,9 @@ void CPU::init_jit_thunks()
 
 	// Saves registers from C++ code.
 	jit_frame(JIT_FRAME_SIZE);
-	auto *self = jit_arg();
 	auto *state = jit_arg();
 
 	// These registers remain fixed and all called thunks will poke into these registers as necessary.
-	jit_getarg(JIT_REGISTER_SELF, self);
 	jit_getarg(JIT_REGISTER_STATE, state);
 	jit_ldxi_i(JIT_REGISTER_NEXT_PC, JIT_REGISTER_STATE, offsetof(CPUState, pc));
 	jit_ldxi(JIT_REGISTER_DMEM, JIT_REGISTER_STATE, offsetof(CPUState, dmem));
@@ -376,7 +391,7 @@ void CPU::init_jit_thunks()
 #endif
 
 	jit_prepare();
-	jit_pushargr(JIT_REGISTER_SELF);
+	jit_pushargr(JIT_REGISTER_STATE);
 	jit_pushargr(JIT_REGISTER_NEXT_PC);
 	jit_finishi(reinterpret_cast<jit_pointer_t>(rsp_enter));
 	jit_retval(JIT_REGISTER_NEXT_PC);
@@ -398,7 +413,7 @@ void CPU::init_jit_thunks()
 	// Return status. This register is considered common for all thunks.
 	jit_retr(JIT_REGISTER_MODE);
 
-	thunks.enter_frame = reinterpret_cast<int (*)(void *, void *)>(jit_emit());
+	thunks.enter_frame = reinterpret_cast<int (*)(void *)>(jit_emit());
 	thunks.enter_thunk = jit_address(entry_label);
 	thunks.return_thunk = jit_address(return_label);
 
@@ -436,7 +451,8 @@ int CPU::enter(uint32_t pc)
 {
 	// Top level enter.
 	state.pc = pc;
-	return thunks.enter_frame(this, &state);
+	static_assert(offsetof(CPU, state) == 0, "CPU state must lie on first byte.");
+	return thunks.enter_frame(this);
 }
 
 void CPU::jit_end_of_block(jit_state_t *_jit, uint32_t pc, const CPU::InstructionInfo &last_info)
@@ -690,7 +706,7 @@ void CPU::jit_emit_store_operation(jit_state_t *_jit,
 	if (align_mask)
 	{
 		// We're going to call, so need to save caller-save register we care about.
-		jit_save_cond_branch_taken(_jit);
+		jit_save_caller_save_registers(_jit);
 
 		jit_prepare();
 		jit_pushargr(JIT_REGISTER_DMEM);
@@ -699,7 +715,7 @@ void CPU::jit_emit_store_operation(jit_state_t *_jit,
 		jit_finishi(rsp_unaligned_op);
 
 		// Restore branch state.
-		jit_restore_cond_branch_taken(_jit);
+		jit_restore_caller_save_registers(_jit);
 	}
 
 	if (align_mask)
@@ -750,7 +766,7 @@ void CPU::jit_emit_load_operation(jit_state_t *_jit,
 	if (align_mask)
 	{
 		// We're going to call, so need to save caller-save register we care about.
-		jit_save_cond_branch_taken(_jit);
+		jit_save_caller_save_registers(_jit);
 
 		jit_prepare();
 		jit_pushargr(JIT_REGISTER_DMEM);
@@ -760,7 +776,7 @@ void CPU::jit_emit_load_operation(jit_state_t *_jit,
 		jit_store_register(_jit, JIT_REGISTER_TMP0, rt);
 
 		// Restore branch state.
-		jit_restore_cond_branch_taken(_jit);
+		jit_restore_caller_save_registers(_jit);
 	}
 
 	if (align_mask)
@@ -772,13 +788,13 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
                           bool first_instruction, bool next_instruction_is_branch_target)
 {
 #ifdef TRACE
-	jit_save_cond_branch_taken(_jit);
+	jit_save_caller_save_registers(_jit);
 	jit_prepare();
 	jit_pushargr(JIT_REGISTER_STATE);
 	jit_pushargi(pc);
 	jit_pushargi(instr);
 	jit_finishi(reinterpret_cast<jit_pointer_t>(rsp_report_pc));
-	jit_restore_cond_branch_taken(_jit);
+	jit_restore_caller_save_registers(_jit);
 #endif
 
 	// VU
@@ -822,7 +838,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			vuop = RSP_RESERVED;
 		}
 
-		jit_save_cond_branch_taken(_jit);
+		jit_save_caller_save_registers(_jit);
 
 		jit_prepare();
 		jit_pushargr(JIT_REGISTER_STATE);
@@ -832,7 +848,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		jit_pushargi(e);
 		jit_finishi(reinterpret_cast<jit_pointer_t>(vuop));
 
-		jit_restore_cond_branch_taken(_jit);
+		jit_restore_caller_save_registers(_jit);
 		return;
 	}
 
@@ -1268,7 +1284,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		{
 		case 000: // MFC0
 		{
-			jit_save_cond_branch_taken(_jit);
+			jit_save_caller_save_registers(_jit);
 
 			jit_prepare();
 			jit_pushargr(JIT_REGISTER_STATE);
@@ -1277,7 +1293,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_finishi(reinterpret_cast<jit_pointer_t>(RSP_MFC0));
 			jit_retval(JIT_REGISTER_MODE);
 
-			jit_restore_cond_branch_taken(_jit);
+			jit_restore_caller_save_registers(_jit);
 
 			jit_node_t *noexit = jit_beqi(JIT_REGISTER_MODE, MODE_CONTINUE);
 			jit_exit_dynamic(_jit, pc, last_info, first_instruction);
@@ -1288,7 +1304,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 
 		case 004: // MTC0
 		{
-			jit_save_cond_branch_taken(_jit);
+			jit_save_caller_save_registers(_jit);
 
 			jit_prepare();
 			jit_pushargr(JIT_REGISTER_STATE);
@@ -1297,7 +1313,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_finishi(reinterpret_cast<jit_pointer_t>(RSP_MTC0));
 			jit_retval(JIT_REGISTER_MODE);
 
-			jit_restore_cond_branch_taken(_jit);
+			jit_restore_caller_save_registers(_jit);
 
 			jit_node_t *noexit = jit_beqi(JIT_REGISTER_MODE, MODE_CONTINUE);
 			jit_exit_dynamic(_jit, pc, last_info, first_instruction);
@@ -1323,7 +1339,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		{
 		case 000: // MFC2
 		{
-			jit_save_cond_branch_taken(_jit);
+			jit_save_caller_save_registers(_jit);
 
 			jit_prepare();
 			jit_pushargr(JIT_REGISTER_STATE);
@@ -1332,14 +1348,14 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_pushargi(imm);
 			jit_finishi(reinterpret_cast<jit_pointer_t>(RSP_MFC2));
 
-			jit_restore_cond_branch_taken(_jit);
+			jit_restore_caller_save_registers(_jit);
 
 			break;
 		}
 
 		case 002: // CFC2
 		{
-			jit_save_cond_branch_taken(_jit);
+			jit_save_caller_save_registers(_jit);
 
 			jit_prepare();
 			jit_pushargr(JIT_REGISTER_STATE);
@@ -1347,14 +1363,14 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_pushargi(rd);
 			jit_finishi(reinterpret_cast<jit_pointer_t>(RSP_CFC2));
 
-			jit_restore_cond_branch_taken(_jit);
+			jit_restore_caller_save_registers(_jit);
 
 			break;
 		}
 
 		case 004: // MTC2
 		{
-			jit_save_cond_branch_taken(_jit);
+			jit_save_caller_save_registers(_jit);
 
 			jit_prepare();
 			jit_pushargr(JIT_REGISTER_STATE);
@@ -1363,13 +1379,13 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_pushargi(imm);
 			jit_finishi(reinterpret_cast<jit_pointer_t>(RSP_MTC2));
 
-			jit_restore_cond_branch_taken(_jit);
+			jit_restore_caller_save_registers(_jit);
 			break;
 		}
 
 		case 006: // CTC2
 		{
-			jit_save_cond_branch_taken(_jit);
+			jit_save_caller_save_registers(_jit);
 
 			jit_prepare();
 			jit_pushargr(JIT_REGISTER_STATE);
@@ -1377,7 +1393,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_pushargi(rd);
 			jit_finishi(reinterpret_cast<jit_pointer_t>(RSP_CTC2));
 
-			jit_restore_cond_branch_taken(_jit);
+			jit_restore_caller_save_registers(_jit);
 			break;
 		}
 
@@ -1490,7 +1506,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		const char *op = lwc2_ops[rd];
 		if (op)
 		{
-			jit_save_cond_branch_taken(_jit);
+			jit_save_caller_save_registers(_jit);
 			jit_prepare();
 			jit_pushargr(JIT_REGISTER_STATE);
 			jit_pushargi(rt);
@@ -1498,7 +1514,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_pushargi(simm);
 			jit_pushargi(rs);
 			jit_finishi(reinterpret_cast<jit_pointer_t>(ops[rd]));
-			jit_restore_cond_branch_taken(_jit);
+			jit_restore_caller_save_registers(_jit);
 		}
 
 		break;
@@ -1527,7 +1543,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		const char *op = swc2_ops[rd];
 		if (op)
 		{
-			jit_save_cond_branch_taken(_jit);
+			jit_save_caller_save_registers(_jit);
 			jit_prepare();
 			jit_pushargr(JIT_REGISTER_STATE);
 			jit_pushargi(rt);
@@ -1535,7 +1551,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			jit_pushargi(simm);
 			jit_pushargi(rs);
 			jit_finishi(reinterpret_cast<jit_pointer_t>(ops[rd]));
-			jit_restore_cond_branch_taken(_jit);
+			jit_restore_caller_save_registers(_jit);
 		}
 
 		break;

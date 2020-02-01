@@ -83,7 +83,7 @@ private:
 
 	struct
 	{
-		int (*enter_frame)(void *self, void *state) = nullptr;
+		int (*enter_frame)(void *state) = nullptr;
 
 		Func enter_thunk = nullptr;
 		Func return_thunk = nullptr;
@@ -123,8 +123,8 @@ private:
 	                              uint32_t endian_flip,
 	                              const InstructionInfo &last_info);
 
-	static void jit_save_cond_branch_taken(jit_state_t *_jit);
-	static void jit_restore_cond_branch_taken(jit_state_t *_jit);
+	static void jit_save_caller_save_registers(jit_state_t *_jit);
+	static void jit_restore_caller_save_registers(jit_state_t *_jit);
 	static void jit_save_illegal_cond_branch_taken(jit_state_t *_jit);
 	static void jit_restore_illegal_cond_branch_taken(jit_state_t *_jit, unsigned reg);
 	static void jit_clear_illegal_cond_branch_taken(jit_state_t *_jit, unsigned tmp_reg);

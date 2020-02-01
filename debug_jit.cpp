@@ -65,8 +65,18 @@ bool DebugBlock::Impl::compile(uint64_t hash, const std::string &source)
 	fclose(file);
 
 	char command[256];
-	sprintf(command, "gcc -o %s %s -shared -fpic -O0 -g -std=c99 -Wl,--unresolved-symbols=ignore-all", soname.c_str(),
-	        name.c_str());
+	if (sizeof(size_t) == 8)
+	{
+		sprintf(command, "gcc -o %s %s -shared -fpic -O0 -g -std=c99 -Wl,--unresolved-symbols=ignore-all",
+		        soname.c_str(),
+		        name.c_str());
+	}
+	else if (sizeof(size_t) == 4)
+	{
+		sprintf(command, "gcc -m32 -o %s %s -shared -fpic -O0 -g -std=c99 -Wl,--unresolved-symbols=ignore-all",
+		        soname.c_str(),
+		        name.c_str());
+	}
 	int ret = system(command);
 	if (ret != 0)
 		return false;
