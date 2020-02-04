@@ -83,6 +83,32 @@ uint64_t CPU::hash_imem(unsigned pc, unsigned count) const
 	return h;
 }
 
+#ifdef TRACE
+static uint64_t hash_registers(const CPUState *rsp)
+{
+	const auto *data = rsp->sr;
+	uint64_t h = 0xcbf29ce484222325ull;
+	for (size_t i = 1; i < 32; i++)
+		h = (h * 0x100000001b3ull) ^ data[i];
+
+	data = reinterpret_cast<const uint32_t *>(&rsp->cp2);
+	unsigned words = sizeof(rsp->cp2) >> 2;
+	for (size_t i = 0; i < words; i++)
+		h = (h * 0x100000001b3ull) ^ data[i];
+
+	return h;
+}
+
+static uint64_t hash_dmem(const CPUState *rsp)
+{
+	const auto *data = rsp->dmem;
+	uint64_t h = 0xcbf29ce484222325ull;
+	for (size_t i = 0; i < 1024; i++)
+		h = (h * 0x100000001b3ull) ^ data[i];
+	return h;
+}
+#endif
+
 unsigned CPU::analyze_static_end(unsigned pc, unsigned end)
 {
 	// Scans through IMEM and finds the logical "end" of the instruction stream.
@@ -271,17 +297,8 @@ extern "C"
 	static void rsp_report_pc(const CPUState *state, jit_uword_t pc, jit_uword_t instr)
 	{
 		auto disasm = disassemble(pc, instr);
+		disasm += " (" + std::to_string(hash_registers(state)) + ") (" + std::to_string(hash_dmem(state)) + ")";
 		puts(disasm.c_str());
-		for (unsigned i = 0; i < 32; i++)
-		{
-			if (i == 0)
-				printf("                  ");
-			else
-				printf("[%s = 0x%08x] ", register_name(i), state->sr[i]);
-			if ((i & 7) == 7)
-				printf("\n");
-		}
-		printf("\n");
 	}
 #endif
 
