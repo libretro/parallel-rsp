@@ -1341,6 +1341,8 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 		break;
 	}
 
+#define TWO_REG_RS_IS_ZERO() (((instr >> 21) & 31) == 0)
+
 #define TWO_REG_IMM_OP(op, immtype, ext) \
 	unsigned rt = (instr >> 16) & 31; \
 	NOP_IF_RT_ZERO(); \
@@ -1354,7 +1356,17 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 	case 010: // ADDI
 	case 011:
 	{
-		TWO_REG_IMM_OP(addi, int16_t, noext);
+		if (TWO_REG_RS_IS_ZERO())
+		{
+			unsigned rt = (instr >> 16) & 31;
+			NOP_IF_RT_ZERO();
+			regs.immediate_mips_register(_jit, rt, int16_t(instr));
+			regs.unlock_mips_register(rt);
+		}
+		else
+		{
+			TWO_REG_IMM_OP(addi, int16_t, noext);
+		}
 		break;
 	}
 
@@ -1378,7 +1390,17 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 
 	case 015: // ORI
 	{
-		TWO_REG_IMM_OP(ori, uint16_t, noext);
+		if (TWO_REG_RS_IS_ZERO())
+		{
+			unsigned rt = (instr >> 16) & 31;
+			NOP_IF_RT_ZERO();
+			regs.immediate_mips_register(_jit, rt, uint16_t(instr));
+			regs.unlock_mips_register(rt);
+		}
+		else
+		{
+			TWO_REG_IMM_OP(ori, uint16_t, noext);
+		}
 		break;
 	}
 
