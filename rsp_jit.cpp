@@ -2145,7 +2145,7 @@ unsigned RegisterCache::load_mips_register_sext(jit_state_t *_jit, unsigned mips
 		if (mips_reg)
 		{
 			// Have to sign-extend if we're not sure.
-			jit_extr_i(entry_to_jit_register(reg), jit_reg);
+			jit_extr_i(jit_reg, jit_reg);
 		}
 #endif
 		reg.sign = SExt;
