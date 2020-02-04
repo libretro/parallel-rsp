@@ -1027,6 +1027,7 @@ void CPU::jit_instruction(jit_state_t *_jit, uint32_t pc, uint32_t instr,
 			if (rd != 0)
 			{
 				regs.immediate_mips_register(_jit, rd, (pc + 8) & 0xffcu);
+				regs.unlock_mips_register(rd);
 			}
 
 			info.branch = true;
