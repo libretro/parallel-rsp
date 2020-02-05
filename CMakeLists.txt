@@ -93,12 +93,27 @@ endif()
 add_executable(rsp-runner main.cpp)
 target_link_libraries(rsp-runner PRIVATE parallel-rsp)
 target_compile_options(rsp-runner PRIVATE ${PARALLEL_RSP_CXX_FLAGS})
-set_target_properties(rsp-runner PROPERTIES LINK_FLAGS "-rdynamic")
+
+if (PARALLEL_RSP_DEBUG_JIT)
+	set_target_properties(rsp-runner PROPERTIES LINK_FLAGS "-rdynamic")
+endif()
 
 option(PARALLEL_RSP_TESTS "Enable unit tests for Lightning CPU." ON)
 
+add_executable(rsp-vu-fuzzer rsp_vu_fuzzer.cpp)
+target_link_libraries(rsp-vu-fuzzer PRIVATE parallel-rsp)
+target_compile_options(rsp-vu-fuzzer PRIVATE ${PARALLEL_RSP_CXX_FLAGS})
+
 if (PARALLEL_RSP_TESTS)
 	enable_testing()
+
+	if (ANDROID)
+		add_test(NAME rsp-vu-fuzz
+				COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/android_fuzz_runner.sh
+				${CMAKE_CURRENT_BINARY_DIR}/rsp-vu-fuzzer)
+	else()
+		add_test(NAME rsp-vu-fuzz COMMAND $<TARGET_FILE:rsp-vu-fuzzer>)
+	endif()
 	add_custom_target(rsp-tests ALL)
 
 	add_custom_target(rsp-test-crt
