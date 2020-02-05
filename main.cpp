@@ -1,5 +1,5 @@
 #ifdef PARALLEL_RSP_DEBUG_JIT
-#include "rsp.hpp"
+#include "debug_rsp.hpp"
 #endif
 #include "rsp_jit.hpp"
 #include <stdio.h>

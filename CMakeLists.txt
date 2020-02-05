@@ -20,7 +20,7 @@ add_library(parallel-rsp STATIC
 		rsp/cp0.cpp rsp/cp2.cpp
 		arch/x86_64/rsp/rsp_core.cpp
 		arch/x86_64/rsp/clamp.h
-		arch/x86_64/rsp/rsp.h
+		arch/x86_64/rsp/rsp_common.h
 		arch/x86_64/rsp/SSE2NEON.h
 		arch/x86_64/rsp/rsp_impl.h
 		arch/x86_64/rsp/vcr.h
@@ -55,7 +55,7 @@ if (PARALLEL_RSP_DEBUG_JIT)
 	if (ANDROID)
 		message("Android does not support debug JIT. Disabling it.")
 	else()
-		target_sources(parallel-rsp PRIVATE rsp.cpp rsp.hpp debug_jit.cpp debug_jit.hpp)
+		target_sources(parallel-rsp PRIVATE debug_rsp.cpp debug_rsp.hpp debug_jit.cpp debug_jit.hpp)
 		target_compile_definitions(parallel-rsp PUBLIC PARALLEL_RSP_DEBUG_JIT)
 	endif()
 endif()
