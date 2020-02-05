@@ -12,9 +12,7 @@ endif()
 add_library(parallel-rsp STATIC
 		main.cpp
 		rsp/vfunctions.cpp
-		rsp.cpp rsp.hpp
 		rsp_jit.cpp rsp_jit.hpp
-		debug_jit.cpp debug_jit.hpp
 		rsp_disasm.cpp rsp_disasm.hpp
 		rsp/ls.cpp rsp/pipeline.h
 		rsp/reciprocal.cpp rsp/reciprocal.h
@@ -23,6 +21,7 @@ add_library(parallel-rsp STATIC
 		arch/x86_64/rsp/rsp_core.cpp
 		arch/x86_64/rsp/clamp.h
 		arch/x86_64/rsp/rsp.h
+		arch/x86_64/rsp/SSE2NEON.h
 		arch/x86_64/rsp/rsp_impl.h
 		arch/x86_64/rsp/vcr.h
 		arch/x86_64/rsp/vabs.h
@@ -49,6 +48,17 @@ add_library(parallel-rsp STATIC
 		arch/x86_64/rsp/vsubc.h
 		arch/x86_64/rsp/vxor.h
 		arch/x86_64/rsp/vmulm.h)
+
+option(PARALLEL_RSP_DEBUG_JIT "Enable the debug JIT." ON)
+
+if (PARALLEL_RSP_DEBUG_JIT)
+	if (ANDROID)
+		message("Android does not support debug JIT. Disabling it.")
+	else()
+		target_sources(parallel-rsp PRIVATE rsp.cpp rsp.hpp debug_jit.cpp debug_jit.hpp)
+		target_compile_definitions(parallel-rsp PUBLIC PARALLEL_RSP_DEBUG_JIT)
+	endif()
+endif()
 
 target_include_directories(parallel-rsp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(parallel-rsp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/arch/x86_64/rsp)
