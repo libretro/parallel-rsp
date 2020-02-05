@@ -113,10 +113,17 @@ if (PARALLEL_RSP_TESTS)
 		add_dependencies(rsp-test-binary-${NAME} rsp-test-crt)
 		add_dependencies(rsp-tests rsp-test-binary-${NAME})
 
-		add_test(NAME rsp-test-${NAME}
-				COMMAND $<TARGET_FILE:rsp-runner>
-				${CMAKE_CURRENT_SOURCE_DIR}/debug-toolchain/${NAME}.global.bin
-				${CMAKE_CURRENT_SOURCE_DIR}/debug-toolchain/${NAME}.bin)
+		if (ANDROID)
+			add_test(NAME rsp-test-${NAME}
+					COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/android_test_runner.sh
+					${CMAKE_CURRENT_BINARY_DIR}/rsp-runner
+					${CMAKE_CURRENT_SOURCE_DIR}/debug-toolchain ${NAME})
+		else()
+			add_test(NAME rsp-test-${NAME}
+					COMMAND $<TARGET_FILE:rsp-runner>
+					${CMAKE_CURRENT_SOURCE_DIR}/debug-toolchain/${NAME}.global.bin
+					${CMAKE_CURRENT_SOURCE_DIR}/debug-toolchain/${NAME}.bin)
+		endif()
 	endfunction()
 
 	rsp_add_test(sll)
