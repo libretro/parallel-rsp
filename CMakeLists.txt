@@ -18,36 +18,36 @@ add_library(parallel-rsp STATIC
 		rsp/reciprocal.cpp rsp/reciprocal.h
 		rsp_1.1.h
 		rsp/cp0.cpp rsp/cp2.cpp
-		arch/x86_64/rsp/rsp_core.cpp
-		arch/x86_64/rsp/clamp.h
-		arch/x86_64/rsp/rsp_common.h
-		arch/x86_64/rsp/SSE2NEON.h
-		arch/x86_64/rsp/rsp_impl.h
-		arch/x86_64/rsp/vcr.h
-		arch/x86_64/rsp/vabs.h
-		arch/x86_64/rsp/vadd.h
-		arch/x86_64/rsp/vaddc.h
-		arch/x86_64/rsp/vand.h
-		arch/x86_64/rsp/vch.h
-		arch/x86_64/rsp/vcl.h
-		arch/x86_64/rsp/vcr.h
-		arch/x86_64/rsp/vcmp.h
-		arch/x86_64/rsp/vdivh.h
-		arch/x86_64/rsp/vmac.h
-		arch/x86_64/rsp/vmov.h
-		arch/x86_64/rsp/vmrg.h
-		arch/x86_64/rsp/vmudh.h
-		arch/x86_64/rsp/vmul.h
-		arch/x86_64/rsp/vmull.h
-		arch/x86_64/rsp/vmulh.h
-		arch/x86_64/rsp/vmuln.h
-		arch/x86_64/rsp/vor.h
-		arch/x86_64/rsp/vrcpsq.h
-		arch/x86_64/rsp/vrsq.h
-		arch/x86_64/rsp/vsub.h
-		arch/x86_64/rsp/vsubc.h
-		arch/x86_64/rsp/vxor.h
-		arch/x86_64/rsp/vmulm.h)
+		arch/simd/rsp/rsp_core.cpp
+		arch/simd/rsp/clamp.h
+		arch/simd/rsp/rsp_common.h
+		arch/simd/rsp/SSE2NEON.h
+		arch/simd/rsp/rsp_impl.h
+		arch/simd/rsp/vcr.h
+		arch/simd/rsp/vabs.h
+		arch/simd/rsp/vadd.h
+		arch/simd/rsp/vaddc.h
+		arch/simd/rsp/vand.h
+		arch/simd/rsp/vch.h
+		arch/simd/rsp/vcl.h
+		arch/simd/rsp/vcr.h
+		arch/simd/rsp/vcmp.h
+		arch/simd/rsp/vdivh.h
+		arch/simd/rsp/vmac.h
+		arch/simd/rsp/vmov.h
+		arch/simd/rsp/vmrg.h
+		arch/simd/rsp/vmudh.h
+		arch/simd/rsp/vmul.h
+		arch/simd/rsp/vmull.h
+		arch/simd/rsp/vmulh.h
+		arch/simd/rsp/vmuln.h
+		arch/simd/rsp/vor.h
+		arch/simd/rsp/vrcpsq.h
+		arch/simd/rsp/vrsq.h
+		arch/simd/rsp/vsub.h
+		arch/simd/rsp/vsubc.h
+		arch/simd/rsp/vxor.h
+		arch/simd/rsp/vmulm.h)
 
 option(PARALLEL_RSP_DEBUG_JIT "Enable the debug JIT." ON)
 
@@ -61,7 +61,7 @@ if (PARALLEL_RSP_DEBUG_JIT)
 endif()
 
 target_include_directories(parallel-rsp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_include_directories(parallel-rsp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/arch/x86_64/rsp)
+target_include_directories(parallel-rsp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/arch/simd/rsp)
 target_compile_options(parallel-rsp PRIVATE ${PARALLEL_RSP_CXX_FLAGS})
 
 option(PARALLEL_RSP_BAKED_LIGHTNING "Use built-in Lightning." ON)
