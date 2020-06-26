@@ -16,7 +16,8 @@ namespace JIT
 static constexpr bool huge_va = std::numeric_limits<size_t>::max() > 0x100000000ull;
 // On 64-bit systems, we will never allocate more than one block, this is important since we must ensure that
 // relative jumps are reachable in 32-bits.
-static constexpr size_t block_size = huge_va ? (256 * 1024 * 1024) : (2 * 1024 * 1024);
+// We won't actually allocate 1 GB on 64-bit, but just reserve VA space for it, which we have basically an infinite amount of.
+static constexpr size_t block_size = huge_va ? (1024 * 1024 * 1024) : (2 * 1024 * 1024);
 Allocator::~Allocator()
 {
 #ifdef _WIN32
