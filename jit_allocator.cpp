@@ -24,6 +24,8 @@ Allocator::~Allocator()
 	for (auto &block : blocks)
 		VirtualFree(block.code, 0, MEM_RELEASE);
 #else
+	for (auto &block : blocks)
+		munmap(block.code, block.size);
 #endif
 }
 
@@ -37,6 +39,7 @@ static bool commit_read_write(void *ptr, size_t size)
 #ifdef _WIN32
 	return VirtualAlloc(ptr, size, MEM_COMMIT, PAGE_READWRITE) == ptr;
 #else
+	return mprotect(ptr, size, PROT_READ | PROT_WRITE) == 0;
 #endif
 }
 
@@ -46,6 +49,7 @@ static bool commit_execute(void *ptr, size_t size)
 	DWORD old_protect;
 	return VirtualProtect(ptr, align_page(size), PAGE_EXECUTE, &old_protect) != 0;
 #else
+	return mprotect(ptr, size, PROT_EXEC) == 0;
 #endif
 }
 
@@ -76,7 +80,7 @@ void *Allocator::allocate_code(size_t size)
 		block = &blocks.back();
 	}
 
-	if (!block)
+	if (!block || !block->code)
 		return nullptr;
 
 	void *ret = block->code + block->offset;
@@ -95,6 +99,10 @@ Allocator::Block Allocator::reserve_block(size_t size)
 	block.size = size;
 	return block;
 #else
+	block.code = static_cast<uint8_t *>(mmap(nullptr, size, PROT_NONE, MAP_ANONYMOUS | MAP_PRIVATE,
+	                                         -1, 0));
+	block.size = size;
+	return block;
 #endif
 }
 }
