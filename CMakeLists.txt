@@ -12,6 +12,7 @@ endif()
 add_library(parallel-rsp STATIC
 		rsp/vfunctions.cpp
 		rsp_jit.cpp rsp_jit.hpp
+		jit_allocator.cpp jit_allocator.hpp
 		rsp_disasm.cpp rsp_disasm.hpp
 		rsp/ls.cpp rsp/pipeline.h
 		rsp/reciprocal.cpp rsp/reciprocal.h
