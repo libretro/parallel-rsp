@@ -2,6 +2,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #else
+#include <unistd.h>
 #include <sys/mman.h>
 #endif
 #include <limits>
@@ -31,7 +32,12 @@ Allocator::~Allocator()
 
 static size_t align_page(size_t offset)
 {
-	return (offset + 4095) & ~size_t(4095);
+#ifdef _WIN32
+	size_t pagesize = 4095;
+#else
+	size_t pagesize = sysconf(_SC_PAGESIZE) - 1;
+#endif
+	return (offset + pagesize) & ~size_t(pagesize);
 }
 
 static bool commit_read_write(void *ptr, size_t size)
