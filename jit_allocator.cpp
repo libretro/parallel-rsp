@@ -32,10 +32,10 @@ Allocator::~Allocator()
 
 static size_t align_page(size_t offset)
 {
-#ifdef _WIN32
-	size_t pagesize = 4095;
-#else
+#if defined(__APPLE__) && defined(__aarch64__)
 	size_t pagesize = sysconf(_SC_PAGESIZE) - 1;
+#else
+	size_t pagesize = 4095;
 #endif
 	return (offset + pagesize) & ~size_t(pagesize);
 }
