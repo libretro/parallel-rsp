@@ -109,13 +109,12 @@ extern "C"
 	static int rsp_dma_read(RSP::CPUState *rsp)
 	{
 		uint32_t length_reg = *rsp->cp0.cr[CP0_REGISTER_DMA_READ_LENGTH];
-		uint32_t length = (length_reg & 0xFFF) + 1;
+		uint32_t length = (length_reg & 0xFF8) + 8;
 		uint32_t skip = (length_reg >> 20) & 0xFFF;
 		unsigned count = (length_reg >> 12) & 0xFF;
 
 		// Force alignment.
-		length = (length + 0x7) & ~0x7;
-		*rsp->cp0.cr[CP0_REGISTER_DMA_CACHE] &= ~0x3;
+		*rsp->cp0.cr[CP0_REGISTER_DMA_CACHE] &= ~0x7;
 		*rsp->cp0.cr[CP0_REGISTER_DMA_DRAM] &= ~0x7;
 
 		// Check length.
